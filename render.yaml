@@ -14,7 +14,7 @@ services:
     region: singapore
     autoDeployTrigger: off
     buildCommand: corepack pnpm install --frozen-lockfile && corepack pnpm db:migrate && corepack pnpm db:seed && corepack pnpm build
-    startCommand: corepack pnpm start
+    startCommand: node node_modules/next/dist/bin/next start
     healthCheckPath: /api/health
     envVars:
       - key: NODE_VERSION

@@ -89,7 +89,7 @@ Next.js UI and route handlers
 
 Missing infrastructure fails visibly. The production path does not substitute fixture AI output or a local-chain success mode.
 
-Completed presentations are rendered as slide previews and can be downloaded as the exact generated structured JSON. ComputeQuest does not claim PPTX or PDF export.
+Completed presentations are rendered as slide previews, copied as a readable text outline, downloaded as the exact structured JSON, or exported as a deterministic 16:9 PDF. The PDF is generated from the persisted Gemini result without another provider call. ComputeQuest does not claim PPTX export.
 
 ## Verified evidence
 

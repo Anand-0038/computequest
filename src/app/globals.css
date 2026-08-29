@@ -164,6 +164,8 @@ button:focus-visible, a:focus-visible, textarea:focus-visible, input:focus-visib
 .result-actions { display: flex; align-items: center; gap: 24px; flex-wrap: wrap; }
 .result-actions a, .result-actions button { color: var(--ink); font: 800 11px monospace; text-decoration: underline; text-underline-offset: 5px; }
 .result-actions button { border: 0; background: var(--energy); padding: 15px 18px; text-decoration: none; }
+.result-actions button:disabled { cursor: wait; opacity: .58; }
+.export-error { color: var(--coral); font: 800 11px "IBM Plex Mono", ui-monospace, monospace; letter-spacing: .04em; }
 
 .sponsor-intake { padding: clamp(64px, 8vw, 112px) clamp(20px, 5vw, 72px); display: grid; grid-template-columns: minmax(280px, .8fr) minmax(440px, 1.2fr); gap: clamp(40px, 8vw, 120px); border-top: 1px solid var(--line); }
 .sponsor-intake-copy h2 { max-width: 680px; }

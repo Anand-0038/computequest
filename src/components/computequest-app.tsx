@@ -4,6 +4,7 @@ import { FormEvent, useCallback, useEffect, useRef, useState, useSyncExternalSto
 
 import { TASK_COST } from "@/domain/constants";
 import type { Presentation } from "@/domain/presentation";
+import { presentationFilename, presentationToPdf, presentationToPlainText } from "@/domain/presentation-export";
 import { ComputeCell, type ComputeCellViewModel } from "@/components/compute-cell";
 import { SponsorQuest } from "@/components/sponsor-quest";
 import { SponsorInquiry } from "@/components/sponsor-inquiry";
@@ -74,6 +75,7 @@ export function ComputeQuestApp() {
   const [sessionError, setSessionError] = useState<string | null>(null);
   const [jobRecoveryError, setJobRecoveryError] = useState<string | null>(null);
   const [result, setResult] = useState<{ presentation: Presentation; transactionHash: string } | null>(null);
+  const [exportStatus, setExportStatus] = useState<"idle" | "copying" | "copied" | "pdf" | "error">("idle");
   const attemptedJobRecoveries = useRef(new Set<string>());
 
   function toggleTheme() {
@@ -218,9 +220,39 @@ export function ComputeQuestApp() {
     const url = URL.createObjectURL(blob);
     const anchor = document.createElement("a");
     anchor.href = url;
-    anchor.download = `${result.presentation.title.toLocaleLowerCase("en-US").replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "computequest-deck"}.json`;
+    anchor.download = presentationFilename(result.presentation.title, "json");
     anchor.click();
     URL.revokeObjectURL(url);
+  }
+
+  async function copyPresentation() {
+    if (!result) return;
+    setExportStatus("copying");
+    try {
+      await navigator.clipboard.writeText(presentationToPlainText(result.presentation));
+      setExportStatus("copied");
+      window.setTimeout(() => setExportStatus("idle"), 2_000);
+    } catch {
+      setExportStatus("error");
+    }
+  }
+
+  async function downloadPresentationPdf() {
+    if (!result) return;
+    setExportStatus("pdf");
+    try {
+      const bytes = await presentationToPdf(result.presentation);
+      const blob = new Blob([bytes.buffer as ArrayBuffer], { type: "application/pdf" });
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = presentationFilename(result.presentation.title, "pdf");
+      anchor.click();
+      URL.revokeObjectURL(url);
+      setExportStatus("idle");
+    } catch {
+      setExportStatus("error");
+    }
   }
 
   const activeStage = deriveActiveStage({ result: Boolean(result), task });
@@ -430,11 +462,18 @@ export function ComputeQuestApp() {
             ))}
           </div>
           <div className="result-actions">
-            <button onClick={downloadPresentation} type="button">DOWNLOAD GENERATED JSON</button>
+            <button disabled={exportStatus === "copying"} onClick={() => void copyPresentation()} type="button">
+              {exportStatus === "copied" ? "COPIED DECK TEXT ✓" : "COPY DECK TEXT"}
+            </button>
+            <button disabled={exportStatus === "pdf"} onClick={() => void downloadPresentationPdf()} type="button">
+              {exportStatus === "pdf" ? "BUILDING PDF…" : "DOWNLOAD PDF"}
+            </button>
+            <button onClick={downloadPresentation} type="button">DOWNLOAD JSON</button>
             <a href={`https://testnet.monadvision.com/tx/${result.transactionHash}`} target="_blank" rel="noreferrer">
               VIEW MONAD TESTNET SETTLEMENT ↗
             </a>
           </div>
+          {exportStatus === "error" ? <p className="export-error" role="alert">EXPORT FAILED. TRY AGAIN OR DOWNLOAD JSON.</p> : null}
         </section>
       ) : null}
 

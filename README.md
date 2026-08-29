@@ -6,7 +6,7 @@
 
 ComputeQuest is a sponsored-compute platform. A user requests useful AI work; if their balance is too low, they can voluntarily complete a short sponsor experience. ComputeQuest measures eligible active attention, settles a signed reward through a replay-protected contract on Monad Testnet, issues non-transferable Compute Energy (CE), and automatically starts the original Gemini job.
 
-The current release proves one narrow workload end to end: an eight-slide pitch deck costing 24 CE. New sessions receive 4 CE, and one eligible campaign can cover the 20 CE funding gap before Gemini starts automatically.
+The current release proves one narrow workload end to end: an eight-slide pitch deck costing 24 CE. New sessions receive 4 CE, and either eligible campaign can cover the 20 CE funding gap before Gemini starts automatically. The public campaign picker currently offers a Monad educational creative and a PayZoll partner creative; each campaign has its own funded numeric identity on Monad Testnet.
 
 ## Product screenshots
 
@@ -101,6 +101,7 @@ Completed presentations are rendered as slide previews, copied as a readable tex
 - Gemini: the configured `gemini-3.5-flash-lite` provider completed the golden-path pitch deck and persisted a completed job.
 - Contract: [`0xe9c37c275C78Bb9259F25e7C47471E54808dC94b`](https://testnet.monadvision.com/address/0xe9c37c275C78Bb9259F25e7C47471E54808dC94b), campaign `1`, deployed and funded with `0.02` Testnet MON. Deployment transaction: [`0x8e4861…d8b67`](https://testnet.monadvision.com/tx/0x8e486125909d392c9a894d7199acb0283160dae32f67ca9b27154a9c5bbd8b67); campaign creation: [`0x4f8120…30726`](https://testnet.monadvision.com/tx/0x4f81205b061cd8386dbca5f2c083ac3f9613ee4a295013324633f93b07830726). Both receipts succeeded, runtime bytecode and campaign state were read back, and Sourcify reports a runtime source match.
 - Live settlement proof: [`0x01a795…e48d70`](https://testnet.monadvision.com/tx/0x01a79519e53c58fb849f6179cd212aba8833269b8d630b0e25df75b6abe48d70), receipt status `0x1`, completion count `1`, campaign budget remaining `0.019` Testnet MON.
+- PayZoll partner campaign: numeric campaign `2`, funded with `0.02` Testnet MON for 20 completions at `0.001` Testnet MON each. Creation transaction: [`0xd6275f…b10dd`](https://testnet.monadvision.com/tx/0xd6275fa774b241d3a8e4fa47413c0e9a004747161eacc6313c0b7d8a7afb10dd). Contract state was read back with the expected reward, capacity, zero completions, and active status before public activation.
 - Live application: [https://computequest.onrender.com](https://computequest.onrender.com)
 
 ## Run locally
@@ -224,7 +225,7 @@ Settlement submission simulates the call, estimates its Monad gas requirement, a
 
 Quest attempts expire after 15 minutes. Expiry is persisted server-side, stops heartbeat traffic, and lets the same task restart with a fresh nonce and zero accumulated time; an expired nonce can never be revived.
 
-The Sponsor Quest player is campaign-driven rather than tied to one brand. The repository includes a captioned 40-second Monad educational video and an 18-second PayZoll partner creative, both generated reproducibly from Remotion compositions in `video/`. PayZoll requires a separate funded on-chain campaign before it can be activated in a deployed environment. Attention mode requires fullscreen and reports video time, duration, playback speed, visibility, focus, buffering, seeking, and Picture-in-Picture state. The server compares video-time movement with its own heartbeat interval before crediting time; a forward seek, rate change, oversized gap, hidden document, lost focus, fullscreen exit, buffering event, or stopped video earns zero for that interval. Credited time is capped at the campaign requirement and persisted as `ATTENTION_VERIFIED` before the user explicitly claims the reward.
+The Sponsor Quest player is campaign-driven rather than tied to one brand. The repository includes a captioned 40-second Monad educational video and an 18-second PayZoll partner creative, both generated reproducibly from Remotion compositions in `video/`. Both creatives now map to separately funded on-chain campaign IDs. Attention mode requires fullscreen and reports video time, duration, playback speed, visibility, focus, buffering, seeking, and Picture-in-Picture state. The server compares video-time movement with its own heartbeat interval before crediting time; a forward seek, rate change, oversized gap, hidden document, lost focus, fullscreen exit, buffering event, or stopped video earns zero for that interval. Credited time is capped at the campaign requirement and persisted as `ATTENTION_VERIFIED` before the user explicitly claims the reward.
 
 The Monad creative is an independent educational campaign; Monad Testnet is the settlement network. Each persisted user can receive at most one successful reward from a campaign. `campaign_reward_claims` separates that invariant from restartable quest attempts: the original verified quest can retry a failed settlement, while a different task cannot claim the same campaign reward.
 

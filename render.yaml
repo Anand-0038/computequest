@@ -13,7 +13,7 @@ services:
     plan: free
     region: singapore
     autoDeployTrigger: off
-    buildCommand: corepack pnpm install --frozen-lockfile && corepack pnpm operator:activate-payzoll && corepack pnpm db:migrate && corepack pnpm db:seed && corepack pnpm build
+    buildCommand: corepack pnpm install --frozen-lockfile && corepack pnpm db:migrate && corepack pnpm db:seed && corepack pnpm build
     startCommand: node node_modules/next/dist/bin/next start
     healthCheckPath: /api/health
     envVars:

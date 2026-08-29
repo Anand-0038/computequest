@@ -46,7 +46,7 @@ services:
       - key: RELAYER_MIN_BALANCE_WEI
         value: "500000000000000000"
       - key: DEMO_CAMPAIGN_ID
-        value: 00000000-0000-4000-8000-000000000002
+        value: 3402b9eb-4fab-404f-b18b-1839d1c324df
       - key: DEMO_ONCHAIN_CAMPAIGN_ID
         sync: false
       - key: DEMO_ONCHAIN_REWARD_WEI

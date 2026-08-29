@@ -13,8 +13,8 @@ services:
     plan: free
     region: singapore
     autoDeployTrigger: off
-    buildCommand: corepack pnpm install --frozen-lockfile && corepack pnpm build
-    startCommand: corepack pnpm db:migrate && corepack pnpm db:seed && corepack pnpm start
+    buildCommand: corepack pnpm install --frozen-lockfile && corepack pnpm db:migrate && corepack pnpm db:seed && corepack pnpm build
+    startCommand: corepack pnpm start
     healthCheckPath: /api/health
     envVars:
       - key: NODE_VERSION

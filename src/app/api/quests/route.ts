@@ -2,28 +2,33 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 
 import { requireRuntimeEnv } from "@/server/env";
-import { requireMonadRuntimeReady } from "@/server/chain/monad";
+import { requireCampaignRuntimeReady } from "@/server/chain/monad";
 import { requireSessionUserId } from "@/server/auth/session";
 import { createQuestSession, getQuestForTask } from "@/server/services/quests";
+import { getActiveCampaignSettlementIdentity } from "@/server/services/campaigns";
 import { publicQuestSession } from "@/server/http/public-shapes";
 
-const requestSchema = z.object({ taskId: z.string().uuid() });
+const requestSchema = z.object({ taskId: z.string().uuid(), campaignId: z.string().uuid() });
 
 export async function POST(request: Request) {
   try {
-    const env = requireRuntimeEnv();
+    requireRuntimeEnv();
     const userId = await requireSessionUserId();
-    await requireMonadRuntimeReady();
     const body = requestSchema.parse(await request.json());
+    const campaign = await getActiveCampaignSettlementIdentity(body.campaignId);
+    await requireCampaignRuntimeReady(campaign.onchainCampaignId, campaign.onchainRewardWei);
     const result = await createQuestSession({
-      campaignId: env.DEMO_CAMPAIGN_ID,
+      campaignId: body.campaignId,
       taskId: body.taskId,
       userId,
     });
     return NextResponse.json({ ...result, session: publicQuestSession(result.session) }, { status: 201 });
   } catch (error) {
     const message = error instanceof Error ? error.message : "QUEST_CREATE_FAILED";
-    return NextResponse.json({ error: message }, { status: message.startsWith("MONAD_PREFLIGHT_FAILED") ? 503 : 400 });
+    return NextResponse.json(
+      { error: message },
+      { status: message.startsWith("MONAD_") ? 503 : 400 },
+    );
   }
 }
 

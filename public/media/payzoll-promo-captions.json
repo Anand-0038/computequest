@@ -1,0 +1,7 @@
+[
+  {"text":"USDC in. INR out.","startMs":0,"endMs":3500,"timestampMs":null,"confidence":null},
+  {"text":"Receive global stablecoin payments and settle locally.","startMs":3500,"endMs":7500,"timestampMs":null,"confidence":null},
+  {"text":"Move eligible USDC or USDT inward remittances to an Indian bank account.","startMs":7500,"endMs":11500,"timestampMs":null,"confidence":null},
+  {"text":"Keep remittance documentation, including FIRC for eligible transfers.","startMs":11500,"endMs":15000,"timestampMs":null,"confidence":null},
+  {"text":"PayZoll. Move money globally. Settle locally.","startMs":15000,"endMs":18000,"timestampMs":null,"confidence":null}
+]

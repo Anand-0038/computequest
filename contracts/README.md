@@ -99,4 +99,4 @@ Only after the observed deployment gate passes, copy these values to Render:
 - `DEMO_ONCHAIN_CAMPAIGN_ID`
 - `DEMO_ONCHAIN_REWARD_WEI`
 
-Render must also receive the database, session, Gemini, campaign UUID, quest timing, and completion-answer values documented in the root `.env.example`. Verify `/api/health` after deployment; it must return HTTP 200 with `status: ready` before the demo flow is accepted.
+Render must also receive the database, session, Gemini, campaign UUID, quest timing, and completion-answer values documented in the root `.env.example`. Verify `/api/health` after deployment; it must return HTTP 200 with `status: ready` before the hosted product flow is accepted.

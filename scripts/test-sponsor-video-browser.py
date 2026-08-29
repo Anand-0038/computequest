@@ -11,6 +11,8 @@ BASE_URL = "http://localhost:3000"
 TASK_ID = "00000000-0000-4000-8000-000000000101"
 SESSION_ID = "00000000-0000-4000-8000-000000000102"
 CAMPAIGN_ID = "00000000-0000-4000-8000-000000000103"
+PAYZOLL_CAMPAIGN_ID = "00000000-0000-4000-8000-000000000104"
+REQUIRED_SECONDS = 15
 
 
 def wait_for_payload(page, payloads, predicate, after=0, timeout=10):
@@ -58,7 +60,41 @@ def main():
                 ),
             )
             return
+        if path == "/api/campaigns" and request.method == "GET":
+            route.fulfill(
+                status=200,
+                content_type="application/json",
+                body=json.dumps({"campaigns": [
+                    {
+                        "id": CAMPAIGN_ID,
+                        "sponsorName": "Monad",
+                        "campaignLabel": "ECOSYSTEM CAMPAIGN",
+                        "creativeTitle": "Monad parallel execution",
+                        "creativeDescription": "Parallel execution on Monad.",
+                        "destinationUrl": "https://docs.monad.xyz",
+                        "disclosure": "Independent educational creative.",
+                        "creditReward": 20,
+                        "requiredActiveSeconds": 20,
+                    },
+                    {
+                        "id": PAYZOLL_CAMPAIGN_ID,
+                        "sponsorName": "PayZoll",
+                        "campaignLabel": "PARTNER CAMPAIGN",
+                        "creativeTitle": "USDC in. INR out.",
+                        "creativeDescription": "Global stablecoin payments with local settlement.",
+                        "destinationUrl": "https://payzoll.finance",
+                        "disclosure": "Partner creative for PayZoll.",
+                        "creditReward": 20,
+                        "requiredActiveSeconds": REQUIRED_SECONDS,
+                    },
+                ]}),
+            )
+            return
         if path == "/api/quests" and request.method == "POST":
+            request_payload = json.loads(request.post_data or "{}")
+            if request_payload.get("campaignId") != PAYZOLL_CAMPAIGN_ID:
+                route.fulfill(status=400, content_type="application/json", body=json.dumps({"error": "WRONG_CAMPAIGN_SELECTED"}))
+                return
             route.fulfill(
                 status=201,
                 content_type="application/json",
@@ -73,11 +109,16 @@ def main():
                             "lastAttentionReason": "VIDEO_NOT_PLAYING",
                         },
                         "campaign": {
-                            "id": CAMPAIGN_ID,
-                            "creativeTitle": "Monad parallel execution in 30 seconds",
-                            "completionQuestion": "What execution model processes independent work concurrently?",
+                            "id": PAYZOLL_CAMPAIGN_ID,
+                            "sponsorName": "PayZoll",
+                            "campaignLabel": "PARTNER CAMPAIGN",
+                            "creativeTitle": "USDC in. INR out.",
+                            "creativeUrl": "/media/payzoll-global-payments.mp4",
+                            "creativeDescription": "Global stablecoin payments with local settlement.",
+                            "destinationUrl": "https://payzoll.finance",
+                            "disclosure": "Partner creative for PayZoll.",
                             "creditReward": 20,
-                            "requiredActiveSeconds": 20,
+                            "requiredActiveSeconds": REQUIRED_SECONDS,
                         },
                     }
                 ),
@@ -106,8 +147,8 @@ def main():
                 reason = "PLAYBACK_RATE_CHANGED"
             eligible = reason == "VERIFIED"
             if eligible:
-                accumulated_ms = 20_000 if force_complete else min(20_000, accumulated_ms + 3000)
-            attention_verified = accumulated_ms >= 20_000
+                accumulated_ms = REQUIRED_SECONDS * 1000 if force_complete else min(REQUIRED_SECONDS * 1000, accumulated_ms + 3000)
+            attention_verified = accumulated_ms >= REQUIRED_SECONDS * 1000
             route.fulfill(
                 status=200,
                 content_type="application/json",
@@ -161,19 +202,20 @@ def main():
                 )
             )
         page.get_by_role("button", name="START BUILD — 24 CE").click()
-        page.get_by_role("button", name="EARN 20 CE").click()
+        page.get_by_role("radio", name="PayZoll", exact=False).click()
+        page.get_by_role("button", name="START SELECTED QUEST").click()
         video = page.locator("video.sponsor-video")
         video.wait_for(state="visible")
         assert page.locator("#quest-answer").count() == 0
         page.get_by_text("No quiz or text answer is required.", exact=False).wait_for()
-        assert video.get_attribute("src") == "/media/monad-parallel-execution.mp4"
+        assert video.get_attribute("src") == "/media/payzoll-global-payments.mp4"
         page.wait_for_function(
             """() => {
               const video = document.querySelector('video.sponsor-video');
-              return video && Number.isFinite(video.duration) && video.duration >= 30;
+              return video && Number.isFinite(video.duration) && video.duration >= 18;
             }"""
         )
-        assert video.evaluate("element => element.duration") >= 30
+        assert video.evaluate("element => element.duration") >= 18
 
         page.get_by_role("button", name="ENTER ATTENTION MODE").click()
         page.wait_for_function(
@@ -209,7 +251,7 @@ def main():
         assert playing["buffering"] is False
         assert playing["playbackRate"] == 1
         assert playing["mediaTimeMs"] > 0
-        assert playing["durationMs"] >= 30_000
+        assert playing["durationMs"] >= 18_000
 
         pause_index = len(heartbeat_payloads)
         page.get_by_role("button", name="PAUSE ATTENTION SESSION").click()
@@ -268,7 +310,7 @@ def main():
         force_complete = True
         page.get_by_role("button", name="ENTER ATTENTION MODE").click()
         page.get_by_text("✓ VERIFIED ACTIVE VIEW").wait_for(timeout=5000)
-        page.get_by_text("20 / 20 SEC VERIFIED").wait_for()
+        page.get_by_text("15 / 15 SEC VERIFIED").wait_for()
         page.get_by_role("button", name="CLAIM +20 CE").wait_for()
         assert page.get_by_role("button", name="ENTER ATTENTION MODE").count() == 0
         frozen_heartbeat_count = len(heartbeat_payloads)

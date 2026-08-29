@@ -265,8 +265,8 @@ export function ComputeQuestApp() {
             <span> compute energy.</span>
           </h1>
           <p className="lede">
-            Describe the deck you need. If you are short on credits, complete a verified sponsor
-            quest, settle the reward on Monad Testnet, and send the real job to Gemini.
+            Describe the deck you need. ComputeQuest accepts the task, closes any funding gap with
+            one short sponsor moment, settles on Monad Testnet, and starts Gemini automatically.
           </p>
         </div>
 
@@ -370,10 +370,10 @@ export function ComputeQuestApp() {
 
         {task?.task ? (
           <div className="system-message success" aria-live="polite">
-            <span>{task.task.status.replaceAll("_", " ")}</span>
+            <span>{task.task.status === "AWAITING_CREDITS" ? "TASK ACCEPTED · SPONSOR MOMENT" : task.task.status.replaceAll("_", " ")}</span>
             <p>
-              Task {task.task.id.slice(0, 8)} was persisted. Ledger balance: {task.balance} CE.
-              {task.shortage ? ` ${task.shortage} CE must be earned before generation.` : " The real Gemini job is funded."}
+              Task {task.task.id.slice(0, 8)} is safely queued. Ledger balance: {task.balance} CE.
+              {task.shortage ? ` One verified sponsor moment covers the ${task.shortage} CE funding gap, then generation starts automatically.` : " The Gemini job is funded."}
             </p>
           </div>
         ) : null}
@@ -440,7 +440,7 @@ export function ComputeQuestApp() {
       </section>
 
       <footer>
-        <span>COMPUTEQUEST / MONAD BLITZ</span>
+        <span>COMPUTEQUEST / SPONSORED COMPUTE ON MONAD</span>
       </footer>
     </main>
   );

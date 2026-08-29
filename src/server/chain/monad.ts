@@ -171,10 +171,14 @@ export function evaluateMonadPreflight(input: {
   };
 }
 
-export async function preflightMonadRuntime(): Promise<MonadPreflightReport> {
+export async function preflightMonadRuntime(expected?: {
+  campaignId: bigint;
+  rewardWei: bigint;
+}): Promise<MonadPreflightReport> {
   const { env, publicClient, relayer, verifier } = getMonadClients();
   const escrowAddress = env.CAMPAIGN_ESCROW_ADDRESS as Address;
-  const campaignId = env.DEMO_ONCHAIN_CAMPAIGN_ID;
+  const campaignId = expected?.campaignId ?? env.DEMO_ONCHAIN_CAMPAIGN_ID;
+  const expectedRewardWei = expected?.rewardWei ?? env.DEMO_ONCHAIN_REWARD_WEI;
   const [observedChainId, bytecode, relayerBalance] = await Promise.all([
     publicClient.getChainId(),
     publicClient.getCode({ address: escrowAddress }),
@@ -211,7 +215,7 @@ export async function preflightMonadRuntime(): Promise<MonadPreflightReport> {
     bytecodePresent,
     expectedVerifier: verifier.address,
     observedVerifier,
-    expectedReward: env.DEMO_ONCHAIN_REWARD_WEI,
+    expectedReward: expectedRewardWei,
     rewardPerCompletion,
     active: campaignActive,
     maxCompletions,
@@ -276,18 +280,26 @@ export function missingEscrowPreflightReport(input: {
   };
 }
 
-let cachedPreflight: { expiresAt: number; report: MonadPreflightReport } | null = null;
+const cachedPreflights = new Map<string, { expiresAt: number; report: MonadPreflightReport }>();
 
-export async function getCachedMonadPreflight() {
-  if (cachedPreflight && cachedPreflight.expiresAt > Date.now()) return cachedPreflight.report;
-  const report = await preflightMonadRuntime();
-  cachedPreflight = { expiresAt: Date.now() + 30_000, report };
+export async function getCachedMonadPreflight(expected?: { campaignId: bigint; rewardWei: bigint }) {
+  const key = expected ? `${expected.campaignId}:${expected.rewardWei}` : "demo";
+  const cached = cachedPreflights.get(key);
+  if (cached && cached.expiresAt > Date.now()) return cached.report;
+  const report = await preflightMonadRuntime(expected);
+  cachedPreflights.set(key, { expiresAt: Date.now() + 30_000, report });
   return report;
 }
 
 export async function requireMonadRuntimeReady() {
   const report = await getCachedMonadPreflight();
   if (!report.ready) throw new Error(`MONAD_PREFLIGHT_FAILED:${report.issues.join(",")}`);
+  return report;
+}
+
+export async function requireCampaignRuntimeReady(campaignId: bigint, rewardWei: bigint) {
+  const report = await getCachedMonadPreflight({ campaignId, rewardWei });
+  if (!report.ready) throw new Error(`MONAD_CAMPAIGN_PREFLIGHT_FAILED:${report.issues.join(",")}`);
   return report;
 }
 

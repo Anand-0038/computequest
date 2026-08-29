@@ -14,11 +14,20 @@ type Quest = {
     lastAttentionReason: string;
   };
   campaign: {
+    id: string;
+    sponsorName: string;
+    campaignLabel: string;
     creativeTitle: string;
+    creativeUrl: string;
+    creativeDescription: string;
+    destinationUrl: string;
+    disclosure: string;
     creditReward: number;
     requiredActiveSeconds: number;
   };
 };
+
+type CampaignOption = Omit<Quest["campaign"], "creativeUrl">;
 
 type AttentionSignals = {
   documentVisible: boolean;
@@ -69,6 +78,9 @@ export function SponsorQuest({
   onComplete,
 }: Props) {
   const [quest, setQuest] = useState<Quest | null>(null);
+  const [campaigns, setCampaigns] = useState<CampaignOption[]>([]);
+  const [selectedCampaignId, setSelectedCampaignId] = useState<string | null>(null);
+  const [campaignsLoading, setCampaignsLoading] = useState(true);
   const [playing, setPlaying] = useState(false);
   const [tracking, setTracking] = useState(false);
   const [phase, setPhase] = useState("READY TO EARN");
@@ -82,6 +94,20 @@ export function SponsorQuest({
   const bufferingRef = useRef(false);
   const claimInFlightRef = useRef(false);
   const sessionId = quest?.session.id;
+
+  useEffect(() => {
+    fetch(`/api/campaigns?minimumReward=${encodeURIComponent(shortage)}`, { cache: "no-store" })
+      .then(async (response) => {
+        if (!response.ok) throw new Error("CAMPAIGNS_UNAVAILABLE");
+        return (await response.json()) as { campaigns: CampaignOption[] };
+      })
+      .then((result) => {
+        setCampaigns(result.campaigns);
+        setSelectedCampaignId((current) => current ?? result.campaigns[0]?.id ?? null);
+      })
+      .catch((cause) => setError(cause instanceof Error ? cause.message : "CAMPAIGNS_UNAVAILABLE"))
+      .finally(() => setCampaignsLoading(false));
+  }, [shortage]);
 
   useEffect(() => {
     fetch(`/api/quests?taskId=${encodeURIComponent(taskId)}`, { cache: "no-store" })
@@ -113,10 +139,14 @@ export function SponsorQuest({
     return () => document.removeEventListener("fullscreenchange", onFullscreenChange);
   }, []);
 
-  async function startQuest() {
+  async function startQuest(campaignId = selectedCampaignId) {
+    if (!campaignId) {
+      setError("NO_ELIGIBLE_SPONSOR_CAMPAIGN");
+      return;
+    }
     setError(null);
     try {
-      const created = await postJson<Quest>("/api/quests", { taskId });
+      const created = await postJson<Quest>("/api/quests", { taskId, campaignId });
       videoRef.current?.pause();
       if (videoRef.current) videoRef.current.currentTime = 0;
       sequence.current = created.session.lastHeartbeatSequence;
@@ -285,13 +315,55 @@ export function SponsorQuest({
     }
   }
 
+  const selectedCampaign = campaigns.find((campaign) => campaign.id === selectedCampaignId) ?? null;
+
   if (!quest) {
     return (
-      <section className="funding-gap">
-        <div><span>CURRENT BALANCE</span><strong>{balance} CE</strong><small>AVAILABLE</small></div>
-        <div className="gap-symbol">+</div>
-        <div><span>BALANCE GAP</span><strong>{shortage} CE</strong><small>REQUIRED</small></div>
-        <button onClick={startQuest} type="button">EARN {shortage} CE</button>
+      <section className="sponsor-market" aria-labelledby="sponsor-market-heading">
+        <div className="funding-gap">
+          <div><span>CURRENT BALANCE</span><strong>{balance} CE</strong><small>AVAILABLE</small></div>
+          <div className="gap-symbol">+</div>
+          <div><span>BALANCE GAP</span><strong>{shortage} CE</strong><small>REQUIRED</small></div>
+          <div>
+            <span>AFTER QUEST</span>
+            <strong>{balance + (selectedCampaign?.creditReward ?? shortage)} CE</strong>
+            <small>TASK FUNDED</small>
+          </div>
+        </div>
+        <div className="campaign-picker">
+          <div>
+            <p className="eyebrow">CHOOSE WHO SPONSORS THIS TASK</p>
+            <h2 id="sponsor-market-heading">One verified quest closes your {shortage} CE gap.</h2>
+            <p>Your CE balance is stored in the ComputeQuest ledger. Monad provides auditable reward settlement.</p>
+          </div>
+          {campaignsLoading ? <p className="campaign-empty">LOADING ACTIVE CAMPAIGNS…</p> : null}
+          {!campaignsLoading && campaigns.length === 0 ? (
+            <p className="campaign-empty">No eligible funded campaign is available for this account.</p>
+          ) : null}
+          <div className="campaign-options" role="radiogroup" aria-label="Eligible sponsor campaigns">
+            {campaigns.map((campaign) => {
+              const selected = campaign.id === selectedCampaignId;
+              return (
+                <button
+                  aria-checked={selected}
+                  className={selected ? "campaign-option selected" : "campaign-option"}
+                  key={campaign.id}
+                  onClick={() => setSelectedCampaignId(campaign.id)}
+                  role="radio"
+                  type="button"
+                >
+                  <span>{campaign.campaignLabel}</span>
+                  <strong>{campaign.sponsorName}</strong>
+                  <small>{campaign.requiredActiveSeconds} SEC · +{campaign.creditReward} CE</small>
+                  <p>{campaign.creativeDescription}</p>
+                </button>
+              );
+            })}
+          </div>
+          <button className="start-selected-quest" disabled={!selectedCampaignId} onClick={() => void startQuest()} type="button">
+            START SELECTED QUEST
+          </button>
+        </div>
         {error ? <p className="quest-error">{error}</p> : null}
       </section>
     );
@@ -313,12 +385,12 @@ export function SponsorQuest({
       <div className={`quest-state ${phase.includes("INTERRUPTED") || phase.includes("PAUSED") ? "paused" : ""}`}>{phase}</div>
       <div className="quest-grid">
         <div className="quest-creative">
-          <p className="eyebrow">HACKATHON SAMPLE CAMPAIGN · MONAD · +{quest.campaign.creditReward} CE</p>
+          <p className="eyebrow">{quest.campaign.campaignLabel} · {quest.campaign.sponsorName} · +{quest.campaign.creditReward} CE</p>
           <h2 id="quest-heading">{quest.campaign.creativeTitle}</h2>
-          <p className="quest-disclosure">Independent ComputeQuest demo creative · Not an official paid Monad advertisement</p>
+          <p className="quest-disclosure">{quest.campaign.disclosure}</p>
           <video
             aria-describedby="quest-video-description"
-            aria-label="Monad parallel execution sponsor explainer"
+            aria-label={`${quest.campaign.sponsorName} sponsor creative`}
             className="sponsor-video"
             onEnded={() => {
               bufferingRef.current = false;
@@ -367,11 +439,14 @@ export function SponsorQuest({
             disableRemotePlayback
             preload="auto"
             ref={videoRef}
-            src="/media/monad-parallel-execution.mp4"
+            src={quest.campaign.creativeUrl}
           >
             Your browser does not support HTML video playback.
           </video>
-          <p className="quest-copy">Independent transactions can execute concurrently while Monad preserves EVM compatibility and deterministic results.</p>
+          <p className="quest-copy">{quest.campaign.creativeDescription}</p>
+          <a className="sponsor-link" href={quest.campaign.destinationUrl} target="_blank" rel="noreferrer">
+            VISIT {quest.campaign.sponsorName.toLocaleUpperCase("en-US")} ↗
+          </a>
           <p className="sr-only" id="quest-video-description">Playback must remain active at normal speed while this page is visible, focused, and fullscreen. Pausing, seeking, buffering, entering Picture-in-Picture, or leaving fullscreen pauses earned time.</p>
           {!eligible ? (
             <button className="media-control" onClick={enterAttentionMode} type="button">
@@ -408,7 +483,7 @@ export function SponsorQuest({
             <p>Required attention is verified. Claim the reward to authorize settlement on Monad Testnet.</p>
           )}
           {phase === "QUEST EXPIRED" ? (
-            <button className="retry-control" onClick={startQuest} type="button">START A FRESH QUEST</button>
+            <button className="retry-control" onClick={() => void startQuest(quest.campaign.id)} type="button">START A FRESH QUEST</button>
           ) : null}
           <form onSubmit={finishQuest}>
             <p>{eligible ? `Reward ready: +${quest.campaign.creditReward} CE` : "Complete the required eligible attention time to unlock settlement. No quiz or text answer is required."}</p>

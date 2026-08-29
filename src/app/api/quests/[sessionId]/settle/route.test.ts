@@ -3,7 +3,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({
   requireRuntimeEnv: vi.fn(),
   requireSessionUserId: vi.fn(),
-  requireMonadRuntimeReady: vi.fn(),
+  requireCampaignRuntimeReady: vi.fn(),
+  getQuestCampaignSettlementIdentity: vi.fn(),
   settleQuestCompletion: vi.fn(),
   runPresentationJob: vi.fn(),
   getTaskForUser: vi.fn(),
@@ -11,7 +12,10 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock("@/server/env", () => ({ requireRuntimeEnv: mocks.requireRuntimeEnv }));
 vi.mock("@/server/auth/session", () => ({ requireSessionUserId: mocks.requireSessionUserId }));
-vi.mock("@/server/chain/monad", () => ({ requireMonadRuntimeReady: mocks.requireMonadRuntimeReady }));
+vi.mock("@/server/chain/monad", () => ({ requireCampaignRuntimeReady: mocks.requireCampaignRuntimeReady }));
+vi.mock("@/server/services/campaigns", () => ({
+  getQuestCampaignSettlementIdentity: mocks.getQuestCampaignSettlementIdentity,
+}));
 vi.mock("@/server/services/settlements", () => ({ settleQuestCompletion: mocks.settleQuestCompletion }));
 vi.mock("@/server/services/jobs", () => ({ runPresentationJob: mocks.runPresentationJob }));
 vi.mock("@/server/services/tasks", () => ({ getTaskForUser: mocks.getTaskForUser }));
@@ -65,12 +69,16 @@ function context() {
 beforeEach(() => {
   vi.clearAllMocks();
   mocks.requireSessionUserId.mockResolvedValue(userId);
+  mocks.getQuestCampaignSettlementIdentity.mockResolvedValue({
+    onchainCampaignId: BigInt(1),
+    onchainRewardWei: BigInt(1),
+  });
   mocks.settleQuestCompletion.mockResolvedValue(settlement);
 });
 
 describe("quest settlement route", () => {
   it("refuses settlement before touching state when the observed Monad preflight fails", async () => {
-    mocks.requireMonadRuntimeReady.mockRejectedValueOnce(
+    mocks.requireCampaignRuntimeReady.mockRejectedValueOnce(
       new Error("MONAD_PREFLIGHT_FAILED:RELAYER_BALANCE_INSUFFICIENT"),
     );
     const response = await POST(new Request("http://localhost/api/quests/session/settle", { method: "POST" }), context());

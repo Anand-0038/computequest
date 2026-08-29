@@ -2,11 +2,11 @@
 
 > Turn verified sponsor attention into useful AI compute.
 
-[Live demo](https://computequest.onrender.com) · [Monad Testnet contract](https://testnet.monadvision.com/address/0xe9c37c275C78Bb9259F25e7C47471E54808dC94b) · [Verified settlement](https://testnet.monadvision.com/tx/0x01a79519e53c58fb849f6179cd212aba8833269b8d630b0e25df75b6abe48d70)
+[Live app](https://computequest.onrender.com) · [Monad Testnet contract](https://testnet.monadvision.com/address/0xe9c37c275C78Bb9259F25e7C47471E54808dC94b) · [Verified settlement](https://testnet.monadvision.com/tx/0x01a79519e53c58fb849f6179cd212aba8833269b8d630b0e25df75b6abe48d70)
 
 ComputeQuest is a sponsored-compute platform. A user requests useful AI work; if their balance is too low, they can voluntarily complete a short sponsor experience. ComputeQuest measures eligible active attention, settles a signed reward through a replay-protected contract on Monad Testnet, issues non-transferable Compute Energy (CE), and automatically starts the original Gemini job.
 
-The current release proves one narrow workload end to end: an eight-slide pitch deck costing 24 CE. New sessions receive 4 CE, and the sample campaign awards the 20 CE funding gap after 20 seconds of verified attention.
+The current release proves one narrow workload end to end: an eight-slide pitch deck costing 24 CE. New sessions receive 4 CE, and one eligible campaign can cover the 20 CE funding gap before Gemini starts automatically.
 
 ## Product screenshots
 
@@ -28,9 +28,9 @@ These responsive light-mode states were captured during local browser QA. The pu
 ```text
 AI task (24 CE)
       ↓
-Balance check (4 CE available)
+Task accepted and safely queued (4 CE available)
       ↓
-Sponsor Quest (+20 CE)
+Choose an eligible Sponsor Quest (+20 CE)
       ↓
 Server-timed eligible attention
       ↓
@@ -47,7 +47,7 @@ The three economic actors stay separate:
 - **User:** contributes attention and receives CE that can purchase AI service inside ComputeQuest.
 - **ComputeQuest:** verifies the session, relays settlement, accounts for CE, and runs the provider job.
 
-CE is not a token, is not transferable, and is not presented as money. Users do not need a wallet in the current flow. The Monad creative is an independent hackathon sample campaign, not an official paid Monad advertisement.
+CE is not a token, is not transferable, and is not presented as money. Users do not need a wallet in the current flow. The Monad creative is an independent educational campaign; Monad Testnet is the settlement network.
 
 ## Current status
 
@@ -90,9 +90,9 @@ Completed presentations are rendered as slide previews and can be downloaded as 
 
 ## Verified evidence
 
-- Application: lint, TypeScript, 71 default Vitest tests, 16 real PostgreSQL integration tests, and production build pass.
+- Application: lint, TypeScript, 78 default Vitest tests, 19 real PostgreSQL integration tests, and production build pass.
 - Contract: 5 Foundry tests cover valid settlement, replay rejection, wrong verifier, expiry, pause, withdrawal, and a viem/Solidity EIP-712 golden vector.
-- Browser media: the controlled edge-state gate covers play, pause, buffering, ended, focus, and visibility boundaries. Separately, the unmocked production golden path earned 32,995 ms through the real heartbeat API in Chromium.
+- Browser media: the controlled edge-state gate covers campaign selection, play, pause, buffering, ended, focus, and visibility boundaries. Separately, the production golden path earned 32,995 ms through the real heartbeat API in Chromium.
 - Gemini: the configured `gemini-3.5-flash-lite` provider completed the golden-path pitch deck and persisted a completed job.
 - Contract: [`0xe9c37c275C78Bb9259F25e7C47471E54808dC94b`](https://testnet.monadvision.com/address/0xe9c37c275C78Bb9259F25e7C47471E54808dC94b), campaign `1`, deployed and funded with `0.02` Testnet MON. Deployment transaction: [`0x8e4861…d8b67`](https://testnet.monadvision.com/tx/0x8e486125909d392c9a894d7199acb0283160dae32f67ca9b27154a9c5bbd8b67); campaign creation: [`0x4f8120…30726`](https://testnet.monadvision.com/tx/0x4f81205b061cd8386dbca5f2c083ac3f9613ee4a295013324633f93b07830726). Both receipts succeeded, runtime bytecode and campaign state were read back, and Sourcify reports a runtime source match.
 - Live settlement proof: [`0x01a795…e48d70`](https://testnet.monadvision.com/tx/0x01a79519e53c58fb849f6179cd212aba8833269b8d630b0e25df75b6abe48d70), receipt status `0x1`, completion count `1`, campaign budget remaining `0.019` Testnet MON.
@@ -184,7 +184,8 @@ After deployment, `corepack pnpm contracts:preflight:deployed` must observe the 
 - `GET /api/tasks/:taskId` — read persisted task state.
 - `POST /api/tasks/:taskId/run` — atomically claim a funded job and call Gemini.
 - `POST /api/jobs/:jobId/retry` — re-fund and retry a previously refunded provider job, up to the three-attempt cap, without losing ledger history.
-- `POST /api/quests` — create a quest session.
+- `GET /api/campaigns` — list active, sufficiently funded campaigns that can close the current CE gap and have not already rewarded this user.
+- `POST /api/quests` — create a quest session for the exact selected campaign after a campaign-specific Monad preflight.
 - `POST /api/quests/:sessionId/heartbeat` — accumulate server-authorized active time.
 - `POST /api/quests/:sessionId/authorize` — verify the required eligible duration, then sign the EIP-712 receipt.
 - `POST /api/quests/:sessionId/settle` — relay, confirm, atomically convert the settlement into credits, and automatically claim the funded Gemini job. Provider failure is returned separately from the already-confirmed settlement and refunds the job spend.
@@ -197,17 +198,17 @@ Settlement submission simulates the call, estimates its Monad gas requirement, a
 
 Quest attempts expire after 15 minutes. Expiry is persisted server-side, stops heartbeat traffic, and lets the same task restart with a fresh nonce and zero accumulated time; an expired nonce can never be revived.
 
-The Watch Sponsor Quest uses a captioned 40-second Monad promotional video at `public/media/monad-parallel-execution.mp4`, generated reproducibly from the Remotion composition in `video/` by `corepack pnpm media:generate:sponsor`. It uses Monad's official palette and logo geometry, current documentation-backed claims, burned-in Caption JSON, and a subtle generated stereo sound bed. The current campaign requires 20 seconds of verified attention; video duration and rewarded duration are intentionally separate. Attention mode requires fullscreen and reports video time, duration, playback speed, visibility, focus, buffering, seeking, and Picture-in-Picture state. The server compares video-time movement with its own heartbeat interval before crediting time; a forward seek, rate change, oversized gap, hidden document, lost focus, fullscreen exit, buffering event, or stopped video earns zero for that interval. Credited time is capped at the campaign requirement and persisted as `ATTENTION_VERIFIED` before the user explicitly claims the reward.
+The Sponsor Quest player is campaign-driven rather than tied to one brand. The repository includes a captioned 40-second Monad educational video and an 18-second PayZoll partner creative, both generated reproducibly from Remotion compositions in `video/`. PayZoll requires a separate funded on-chain campaign before it can be activated in a deployed environment. Attention mode requires fullscreen and reports video time, duration, playback speed, visibility, focus, buffering, seeking, and Picture-in-Picture state. The server compares video-time movement with its own heartbeat interval before crediting time; a forward seek, rate change, oversized gap, hidden document, lost focus, fullscreen exit, buffering event, or stopped video earns zero for that interval. Credited time is capped at the campaign requirement and persisted as `ATTENTION_VERIFIED` before the user explicitly claims the reward.
 
-The Monad creative is an independent hackathon sample campaign, not an official paid Monad advertisement. Each persisted user can receive at most one successful reward from a campaign. `campaign_reward_claims` separates that invariant from restartable quest attempts: the original verified quest can retry a failed settlement, while a different task cannot claim the same campaign reward.
+The Monad creative is an independent educational campaign; Monad Testnet is the settlement network. Each persisted user can receive at most one successful reward from a campaign. `campaign_reward_claims` separates that invariant from restartable quest attempts: the original verified quest can retry a failed settlement, while a different task cannot claim the same campaign reward.
 
-The current identity is a signed anonymous browser session. Clearing that identity is outside the protection offered by the one-user database constraint, so this build is suitable for a capped Testnet demonstration, not an open cash-backed campaign. A real-money pilot requires durable identity or a closed allowlist before sponsor funds are exposed.
+The current identity is a signed anonymous browser session. Clearing that identity is outside the protection offered by the one-user database constraint, so the public Testnet campaign must stay capped. A cash-backed campaign requires durable identity or a closed allowlist before sponsor funds are exposed.
 
 Every accepted heartbeat also writes an append-only `attention_events` record with its server timestamp, proof signals, credited milliseconds, eligibility reason, and SHA-256 event hash. This is auditable server-side evidence, not a claim that a browser can lock the rest of the operating system.
 
 Signed completion receipts have a separate 10-minute onchain lifetime. If an unsubmitted receipt expires, the backend persists a settlement failure without broadcasting it and rechecks the verified attention session before replacing the signature. A receipt with a submitted or confirmed transaction is never reset by this recovery path.
 
-Every relay claim creates an append-only settlement-attempt record. Reverted and submission-failed attempts retain their transaction hash or failure reason, while the settlement aggregate can safely move to a later attempt. Relayer writes are serialized within one application instance. If the process stops after broadcasting but before saving the hash, the backend recovers it from the indexed `CompletionSettled` event before continuing finalization. `GET /api/tasks/:taskId` returns the sanitized ordered attempt history with JSON-safe block numbers for reload recovery and demo evidence.
+Every relay claim creates an append-only settlement-attempt record. Reverted and submission-failed attempts retain their transaction hash or failure reason, while the settlement aggregate can safely move to a later attempt. Relayer writes are serialized within one application instance. If the process stops after broadcasting but before saving the hash, the backend recovers it from the indexed `CompletionSettled` event before continuing finalization. `GET /api/tasks/:taskId` returns the sanitized ordered attempt history with JSON-safe block numbers for reload recovery and operational evidence.
 
 The six-stage interface is derived from persisted task, quest, settlement, and job states: Brief → Fund → Attention → Monad settlement → AI working → Result. Completion stops tracking, exits fullscreen, refreshes the persisted task snapshot, removes the finished quest, and reveals the generated result without requiring a manual Escape key or page reload.
 
@@ -225,7 +226,7 @@ The current public service is [computequest.onrender.com](https://computequest.o
 
 - Identity is a signed anonymous browser session. Clearing it can create a new identity, so this release must not expose an uncapped cash-backed campaign.
 - Relayer transaction serialization is process-local. Multiple web instances require a database-backed outbox or dedicated nonce manager.
-- The deployed Testnet campaign demonstrates settlement mechanics; it is not evidence of commercial sponsor revenue.
+- The deployed Testnet campaign proves settlement mechanics; it is not evidence of commercial sponsor revenue.
 - CE is an internal service entitlement. There is no CE-to-MON or CE-to-fiat redemption path.
 - Gemini replacement-cost estimates use published pricing metadata; they are not reconciled Google invoice costs.
 - Render's free PostgreSQL instances expire after 30 days and are unsuitable for durable production storage.

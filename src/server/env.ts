@@ -26,6 +26,13 @@ const runtimeEnvSchema = z.object({
 });
 
 const databaseEnvSchema = runtimeEnvSchema.pick({ DATABASE_URL: true });
+const optionalPayZollCampaignSchema = z.object({
+  PAYZOLL_CAMPAIGN_ID: z.string().uuid(),
+  PAYZOLL_ONCHAIN_CAMPAIGN_ID: z.coerce.bigint().positive(),
+  PAYZOLL_ONCHAIN_REWARD_WEI: z.coerce.bigint().positive(),
+  PAYZOLL_QUEST_SECONDS: z.coerce.number().int().min(10).max(300),
+  PAYZOLL_MAX_COMPLETIONS: z.coerce.number().int().min(1).max(1_000),
+});
 const monadEnvSchema = runtimeEnvSchema.pick({
   MONAD_RPC_URL: true,
   MONAD_CHAIN_ID: true,
@@ -70,6 +77,18 @@ export function requireDatabaseEnv(source: EnvironmentSource = process.env) {
   const result = databaseEnvSchema.safeParse(source);
   if (!result.success) {
     throw new Error("ComputeQuest database is not configured: DATABASE_URL");
+  }
+  return result.data;
+}
+
+export function readOptionalPayZollCampaignEnv(source: EnvironmentSource = process.env) {
+  const keys = Object.keys(optionalPayZollCampaignSchema.shape);
+  const configuredKeys = keys.filter((key) => Boolean(source[key]));
+  if (configuredKeys.length === 0) return null;
+  const result = optionalPayZollCampaignSchema.safeParse(source);
+  if (!result.success) {
+    const missing = [...new Set(result.error.issues.map((issue) => issue.path.join(".")))];
+    throw new Error(`PayZoll campaign is partially configured: ${missing.join(", ")}`);
   }
   return result.data;
 }

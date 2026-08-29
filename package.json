@@ -16,6 +16,7 @@
     "db:seed": "tsx scripts/seed.ts",
     "operator:provider-cost-report": "tsx scripts/provider-cost-report.ts",
     "media:generate:sponsor": "bash scripts/generate-sponsor-creative.sh",
+    "media:generate:payzoll": "bash scripts/generate-payzoll-creative.sh",
     "media:studio:sponsor": "remotion studio video/index.ts --no-open",
     "media:still:sponsor": "remotion still video/index.ts MonadPromo",
     "contracts:build": "forge build --root contracts",

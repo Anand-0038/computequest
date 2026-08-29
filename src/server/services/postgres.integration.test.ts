@@ -21,13 +21,24 @@ import {
 } from "@/server/db/schema";
 import * as gemini from "@/server/ai/gemini";
 import * as monad from "@/server/chain/monad";
-import { upsertDemoCampaign } from "@/server/services/campaigns";
+import { listEligibleCampaigns, upsertDemoCampaign } from "@/server/services/campaigns";
 import { retryRefundedJob, runPresentationJob } from "@/server/services/jobs";
 import { createQuestSession, recordHeartbeat } from "@/server/services/quests";
 import { authorizeQuestCompletion, settleQuestCompletion } from "@/server/services/settlements";
 import { createPresentationTask, getCreditBalance } from "@/server/services/tasks";
 
 const integrationDatabaseUrl = process.env.INTEGRATION_DATABASE_URL;
+
+async function grantStarterCredits(userId: string) {
+  await getDatabase().insert(creditEntries).values({
+    id: crypto.randomUUID(),
+    userId,
+    amount: INITIAL_DEMO_BALANCE,
+    type: "INITIAL_GRANT",
+    referenceId: userId,
+    idempotencyKey: `initial-grant:${userId}`,
+  });
+}
 
 describe.skipIf(!integrationDatabaseUrl)("PostgreSQL service integration", () => {
   beforeAll(() => {
@@ -87,6 +98,104 @@ describe.skipIf(!integrationDatabaseUrl)("PostgreSQL service integration", () =>
     expect(created.balance).toBe(INITIAL_DEMO_BALANCE);
     expect(created.shortage).toBe(TASK_COST - INITIAL_DEMO_BALANCE);
     expect(await getCreditBalance(userId)).toBe(INITIAL_DEMO_BALANCE);
+  });
+
+  it("lists multiple funded campaigns and excludes a campaign already claimed by the user", async () => {
+    const db = getDatabase();
+    const userId = crypto.randomUUID();
+    const firstCampaignId = crypto.randomUUID();
+    const secondCampaignId = crypto.randomUUID();
+    const taskId = crypto.randomUUID();
+    const questSessionId = crypto.randomUUID();
+    await db.insert(users).values({ id: userId });
+    await db.insert(tasks).values({
+      id: taskId,
+      userId,
+      prompt: "Create a sponsor eligibility test deck.",
+      estimatedCost: TASK_COST,
+      status: "AWAITING_CREDITS",
+    });
+    await db.insert(campaigns).values([
+      {
+        id: firstCampaignId,
+        onchainCampaignId: BigInt(1),
+        creditReward: QUEST_REWARD,
+        onchainRewardWei: BigInt(1),
+        requiredActiveSeconds: 20,
+        sponsorName: "Monad",
+        creativeTitle: "Monad campaign",
+        completionQuestion: "",
+        completionAnswerHash: "0x01",
+        remainingBudget: 400,
+      },
+      {
+        id: secondCampaignId,
+        onchainCampaignId: BigInt(2),
+        creditReward: QUEST_REWARD,
+        onchainRewardWei: BigInt(1),
+        requiredActiveSeconds: 15,
+        sponsorName: "PayZoll",
+        creativeTitle: "PayZoll campaign",
+        completionQuestion: "",
+        completionAnswerHash: "0x02",
+        remainingBudget: 400,
+      },
+    ]);
+    await db.insert(questSessions).values({
+      id: questSessionId,
+      campaignId: firstCampaignId,
+      userId,
+      taskId,
+      nonce: crypto.randomUUID(),
+      serverStartedAt: new Date(),
+    });
+    await db.insert(campaignRewardClaims).values({
+      id: crypto.randomUUID(),
+      campaignId: firstCampaignId,
+      userId,
+      questSessionId,
+      status: "CONFIRMED",
+    });
+
+    const eligible = await listEligibleCampaigns(userId);
+
+    expect(eligible).toHaveLength(1);
+    expect(eligible[0]).toMatchObject({ id: secondCampaignId, sponsorName: "PayZoll", creditReward: 20 });
+    expect(await listEligibleCampaigns(userId, 21)).toEqual([]);
+  });
+
+  it("rejects a campaign that cannot fully close the queued task funding gap", async () => {
+    const db = getDatabase();
+    const userId = crypto.randomUUID();
+    const campaignId = crypto.randomUUID();
+    await db.insert(users).values({ id: userId });
+    await db.insert(creditEntries).values({
+      id: crypto.randomUUID(),
+      userId,
+      amount: INITIAL_DEMO_BALANCE,
+      type: "INITIAL_GRANT",
+      referenceId: userId,
+      idempotencyKey: `initial-grant:${userId}`,
+    });
+    const task = await createPresentationTask({
+      userId,
+      prompt: "Create a task that requires the full twenty credit sponsor reward.",
+    });
+    await db.insert(campaigns).values({
+      id: campaignId,
+      onchainCampaignId: BigInt(1),
+      creditReward: 10,
+      onchainRewardWei: BigInt(1),
+      requiredActiveSeconds: 15,
+      creativeTitle: "Undersized reward",
+      completionQuestion: "",
+      completionAnswerHash: "0x01",
+      remainingBudget: 100,
+    });
+
+    await expect(createQuestSession({ campaignId, taskId: task.task.id, userId })).rejects.toThrow(
+      "CAMPAIGN_REWARD_TOO_SMALL_FOR_TASK",
+    );
   });
 
   it("serializes concurrent task spending so credits never become negative", async () => {
@@ -363,6 +472,7 @@ describe.skipIf(!integrationDatabaseUrl)("PostgreSQL service integration", () =>
     const userId = crypto.randomUUID();
     const campaignId = crypto.randomUUID();
     await db.insert(users).values({ id: userId });
+    await grantStarterCredits(userId);
     await db.insert(campaigns).values({
       id: campaignId,
       onchainCampaignId: BigInt(1),
@@ -422,6 +532,7 @@ describe.skipIf(!integrationDatabaseUrl)("PostgreSQL service integration", () =>
     const firstUserId = crypto.randomUUID();
     const secondUserId = crypto.randomUUID();
     await db.insert(users).values([{ id: firstUserId }, { id: secondUserId }]);
+    await Promise.all([grantStarterCredits(firstUserId), grantStarterCredits(secondUserId)]);
     await db.insert(campaigns).values({
       id: campaignId,
       onchainCampaignId: BigInt(1),
@@ -597,6 +708,7 @@ describe.skipIf(!integrationDatabaseUrl)("PostgreSQL service integration", () =>
     const userId = crypto.randomUUID();
     const campaignId = crypto.randomUUID();
     await db.insert(users).values({ id: userId });
+    await grantStarterCredits(userId);
     await db.insert(campaigns).values({
       id: campaignId,
       onchainCampaignId: BigInt(1),
@@ -678,6 +790,7 @@ describe.skipIf(!integrationDatabaseUrl)("PostgreSQL service integration", () =>
     const userId = crypto.randomUUID();
     const campaignId = crypto.randomUUID();
     await db.insert(users).values({ id: userId });
+    await grantStarterCredits(userId);
     await db.insert(campaigns).values({
       id: campaignId,
       onchainCampaignId: BigInt(1),
@@ -755,6 +868,7 @@ describe.skipIf(!integrationDatabaseUrl)("PostgreSQL service integration", () =>
     const userId = crypto.randomUUID();
     const campaignId = crypto.randomUUID();
     await db.insert(users).values({ id: userId });
+    await grantStarterCredits(userId);
     await db.insert(campaigns).values({
       id: campaignId,
       onchainCampaignId: BigInt(1),
@@ -818,6 +932,7 @@ describe.skipIf(!integrationDatabaseUrl)("PostgreSQL service integration", () =>
     const userId = crypto.randomUUID();
     const campaignId = crypto.randomUUID();
     await db.insert(users).values({ id: userId });
+    await grantStarterCredits(userId);
     await db.insert(campaigns).values({
       id: campaignId,
       onchainCampaignId: BigInt(1),
@@ -867,6 +982,7 @@ describe.skipIf(!integrationDatabaseUrl)("PostgreSQL service integration", () =>
     const userId = crypto.randomUUID();
     const campaignId = crypto.randomUUID();
     await db.insert(users).values({ id: userId });
+    await grantStarterCredits(userId);
     await db.insert(campaigns).values({
       id: campaignId,
       onchainCampaignId: BigInt(1),

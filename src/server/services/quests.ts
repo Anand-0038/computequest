@@ -5,6 +5,8 @@ import { and, eq, inArray, lte } from "drizzle-orm";
 import { calculateHeartbeatTransition, isQuestSessionExpired, QUEST_SESSION_TTL_MS, type HeartbeatInput } from "@/domain/quest";
 import { getDatabase } from "@/server/db/client";
 import { attentionEvents, campaignRewardClaims, campaigns, questSessions, tasks } from "@/server/db/schema";
+import { publicCampaign } from "@/server/services/campaigns";
+import { getLockedCreditBalance, lockUserLedger } from "@/server/services/ledger";
 
 export async function createQuestSession(input: {
   campaignId: string;
@@ -28,6 +30,11 @@ export async function createQuestSession(input: {
       .limit(1);
     if (!task || task.status !== "AWAITING_CREDITS") {
       throw new Error("TASK_NOT_AWAITING_CREDITS");
+    }
+    await lockUserLedger(tx, input.userId);
+    const balance = await getLockedCreditBalance(tx, input.userId);
+    if (balance + campaign.creditReward < task.estimatedCost) {
+      throw new Error("CAMPAIGN_REWARD_TOO_SMALL_FOR_TASK");
     }
 
     const [existingClaim] = await tx
@@ -77,13 +84,7 @@ export async function createQuestSession(input: {
         .returning();
       return {
         session: renewed,
-        campaign: {
-          id: campaign.id,
-          creativeTitle: campaign.creativeTitle,
-          completionQuestion: campaign.completionQuestion,
-          creditReward: campaign.creditReward,
-          requiredActiveSeconds: campaign.requiredActiveSeconds,
-        },
+        campaign: publicCampaign(campaign),
       };
     }
 
@@ -103,13 +104,7 @@ export async function createQuestSession(input: {
     if (!session) throw new Error("QUEST_ALREADY_EXISTS");
     return {
       session,
-      campaign: {
-        id: campaign.id,
-        creativeTitle: campaign.creativeTitle,
-        completionQuestion: campaign.completionQuestion,
-        creditReward: campaign.creditReward,
-        requiredActiveSeconds: campaign.requiredActiveSeconds,
-      },
+      campaign: publicCampaign(campaign),
     };
   });
 }
@@ -252,12 +247,6 @@ export async function getQuestForTask(input: { taskId: string; userId: string })
   if (!record) return null;
   return {
     session: record.session,
-    campaign: {
-      id: record.campaign.id,
-      creativeTitle: record.campaign.creativeTitle,
-      completionQuestion: record.campaign.completionQuestion,
-      creditReward: record.campaign.creditReward,
-      requiredActiveSeconds: record.campaign.requiredActiveSeconds,
-    },
+    campaign: publicCampaign(record.campaign),
   };
 }

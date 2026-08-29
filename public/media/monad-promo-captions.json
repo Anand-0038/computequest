@@ -1,0 +1,9 @@
+[
+  {"text":"The EVM, without the wait.","startMs":0,"endMs":4000,"timestampMs":null,"confidence":null},
+  {"text":"Monad is a high-performance, Ethereum-compatible Layer 1.","startMs":4000,"endMs":10000,"timestampMs":null,"confidence":null},
+  {"text":"Ten thousand transactions per second. Three-hundred millisecond blocks. Six-hundred millisecond finality.","startMs":10000,"endMs":17000,"timestampMs":null,"confidence":null},
+  {"text":"Transactions execute in parallel, while results commit in their original order.","startMs":17000,"endMs":24000,"timestampMs":null,"confidence":null},
+  {"text":"Keep Solidity, Ethereum wallets, RPCs, and the tools you already know.","startMs":24000,"endMs":31000,"timestampMs":null,"confidence":null},
+  {"text":"Monad improves performance through software architecture while preserving decentralization.","startMs":31000,"endMs":36000,"timestampMs":null,"confidence":null},
+  {"text":"Build beyond limits. Build on Monad.","startMs":36000,"endMs":40000,"timestampMs":null,"confidence":null}
+]

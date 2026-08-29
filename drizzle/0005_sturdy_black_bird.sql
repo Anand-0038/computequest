@@ -1,0 +1,1 @@
+ALTER TYPE "public"."settlement_status" ADD VALUE 'SUBMITTING' BEFORE 'SUBMITTED';

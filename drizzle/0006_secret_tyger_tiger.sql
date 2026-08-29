@@ -1,0 +1,1 @@
+ALTER TABLE "quest_sessions" ADD COLUMN "last_heartbeat_eligible" boolean DEFAULT false NOT NULL;

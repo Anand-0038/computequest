@@ -1,0 +1,57 @@
+# yaml-language-server: $schema=https://render.com/schema/render.yaml.json
+databases:
+  - name: computequest-db
+    databaseName: computequest
+    user: computequest
+    plan: free
+    region: singapore
+
+services:
+  - type: web
+    name: computequest
+    runtime: node
+    plan: free
+    region: singapore
+    autoDeployTrigger: off
+    buildCommand: corepack pnpm install --frozen-lockfile && corepack pnpm build
+    startCommand: corepack pnpm db:migrate && corepack pnpm db:seed && corepack pnpm start
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_VERSION
+        value: "20"
+      - key: DATABASE_URL
+        fromDatabase:
+          name: computequest-db
+          property: connectionString
+      - key: SESSION_SIGNING_SECRET
+        generateValue: true
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: GEMINI_MODEL
+        value: gemini-3.5-flash-lite
+      - key: MONAD_RPC_URL
+        sync: false
+      - key: MONAD_CHAIN_ID
+        value: "10143"
+      - key: MONAD_EXPLORER_BASE_URL
+        value: https://testnet.monadvision.com
+      - key: CAMPAIGN_ESCROW_ADDRESS
+        sync: false
+      - key: VERIFIER_PRIVATE_KEY
+        sync: false
+      - key: RELAYER_PRIVATE_KEY
+        sync: false
+      - key: RELAYER_MIN_BALANCE_WEI
+        value: "500000000000000000"
+      - key: DEMO_CAMPAIGN_ID
+        value: 00000000-0000-4000-8000-000000000002
+      - key: DEMO_ONCHAIN_CAMPAIGN_ID
+        sync: false
+      - key: DEMO_ONCHAIN_REWARD_WEI
+        value: "1000000000000000"
+      - key: DEMO_QUEST_SECONDS
+        value: "30"
+      - key: DEMO_MAX_COMPLETIONS
+        value: "20"
+      - key: DEMO_QUEST_ANSWER
+        value: parallel execution

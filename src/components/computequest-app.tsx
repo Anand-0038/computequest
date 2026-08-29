@@ -374,7 +374,6 @@ export function ComputeQuestApp() {
 
       <footer>
         <span>COMPUTEQUEST / MONAD BLITZ</span>
-        <span>NO MOCK SETTLEMENTS · NO FAKE OUTPUT</span>
       </footer>
     </main>
   );

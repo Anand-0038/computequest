@@ -16,6 +16,7 @@
     "db:seed": "tsx scripts/seed.ts",
     "operator:provider-cost-report": "tsx scripts/provider-cost-report.ts",
     "operator:sponsor-inquiries": "tsx scripts/list-sponsor-inquiries.ts",
+    "operator:user-report": "tsx scripts/user-report.ts",
     "media:generate:sponsor": "bash scripts/generate-sponsor-creative.sh",
     "media:generate:payzoll": "bash scripts/generate-payzoll-creative.sh",
     "media:studio:sponsor": "remotion studio video/index.ts --no-open",

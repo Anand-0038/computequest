@@ -6,6 +6,7 @@ export const metadata: Metadata = {
   metadataBase: new URL("https://computequest.onrender.com"),
   title: "ComputeQuest — Earn compute energy",
   description: "Turn verified sponsor attention into AI compute on Monad Testnet.",
+  keywords: ["sponsored compute", "AI compute credits", "Monad", "verified sponsor attention", "Compute Energy"],
   alternates: { canonical: "/" },
   openGraph: {
     type: "website",
@@ -21,6 +22,18 @@ export const metadata: Metadata = {
     description: "Sponsor moments fund useful AI work through verified active-view signals and Monad settlement.",
     images: ["/og-image.png"],
   },
+};
+
+const structuredData = {
+  "@context": "https://schema.org",
+  "@type": "WebApplication",
+  name: "ComputeQuest",
+  url: "https://computequest.onrender.com",
+  description: "ComputeQuest turns verified sponsor moments into non-transferable credits for useful AI work.",
+  applicationCategory: "BusinessApplication",
+  operatingSystem: "Web",
+  isAccessibleForFree: true,
+  sameAs: ["https://github.com/Anand-0038/computequest"],
 };
 
 const themeScript = `
@@ -40,6 +53,10 @@ export default function RootLayout({ children }: { children: ReactNode }) {
     <html lang="en" suppressHydrationWarning>
       <head>
         <script dangerouslySetInnerHTML={{ __html: themeScript }} />
+        <script
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(structuredData).replace(/</g, "\\u003c") }}
+          type="application/ld+json"
+        />
       </head>
       <body>{children}</body>
     </html>

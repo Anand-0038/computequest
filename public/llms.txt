@@ -1,0 +1,31 @@
+# ComputeQuest
+
+ComputeQuest converts a voluntary, verified sponsor moment into non-transferable Compute Energy that funds useful AI work.
+
+## Public product
+
+- Application: https://computequest.onrender.com
+- Source: https://github.com/Anand-0038/computequest
+- Monad Testnet CampaignEscrow: https://testnet.monadvision.com/address/0xe9c37c275C78Bb9259F25e7C47471E54808dC94b
+- Verified settlement example: https://testnet.monadvision.com/tx/0x01a79519e53c58fb849f6179cd212aba8833269b8d630b0e25df75b6abe48d70
+
+## Product flow
+
+1. A user requests an AI task with a fixed Compute Energy cost.
+2. If the balance is insufficient, the user may choose an eligible Sponsor Quest.
+3. ComputeQuest credits only eligible active-view intervals using server time and playback evidence.
+4. A verifier signs an EIP-712 completion receipt.
+5. CampaignEscrow settles the receipt on Monad Testnet with replay protection.
+6. After finality, ComputeQuest issues non-transferable CE and starts the waiting Gemini job.
+
+## Important boundaries
+
+- CE is an internal service credit, not a token, currency, or withdrawable asset.
+- Viewers do not need a wallet in the current release.
+- The browser measures eligible active-view signals; it cannot prove gaze or lock other devices and applications.
+- Sponsor requests are reviewed by an operator. Submission does not publish creative or fund a campaign automatically.
+- The deployed Testnet campaign proves settlement mechanics, not commercial sponsor revenue.
+
+## Sponsor contact
+
+Use the For Sponsors section at https://computequest.onrender.com/#for-sponsors to submit an authorized public creative and campaign request.

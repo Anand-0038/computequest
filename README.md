@@ -163,6 +163,14 @@ Review persisted sponsor requests without exposing them through a public read en
 DATABASE_URL=postgresql://... corepack pnpm operator:sponsor-inquiries
 ```
 
+Inspect anonymous identity count, CE liabilities, tasks, and reward-claim totals without exposing a public analytics endpoint:
+
+```bash
+DATABASE_URL=postgresql://... corepack pnpm operator:user-report
+```
+
+This report deliberately calls current rows **anonymous identities**, not registered users. The current signed browser session has no account recovery and is not an anti-Sybil boundary.
+
 ## Browser and media verification
 
 `scripts/test-sponsor-video-browser.py` drives the real UI and shipped MP4 in Chromium. It requires Python Playwright 1.55+, Google Chrome, and Xvfb on a headless Linux machine:

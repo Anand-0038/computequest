@@ -80,6 +80,7 @@ export function SponsorQuest({
   const videoRef = useRef<HTMLVideoElement>(null);
   const questConsoleRef = useRef<HTMLElement>(null);
   const bufferingRef = useRef(false);
+  const claimInFlightRef = useRef(false);
   const sessionId = quest?.session.id;
 
   useEffect(() => {
@@ -90,7 +91,11 @@ export function SponsorQuest({
         sequence.current = restored.session.lastHeartbeatSequence;
         setQuest(restored);
         setTracking(["CREATED", "ACTIVE", "PAUSED"].includes(restored.session.state));
-        setPhase(restored.session.state.replaceAll("_", " "));
+        setPhase(
+          restored.session.state === "ATTENTION_VERIFIED"
+            ? "ATTENTION VERIFIED"
+            : restored.session.state.replaceAll("_", " "),
+        );
       })
       .catch(() => undefined);
   }, [taskId]);
@@ -151,11 +156,18 @@ export function SponsorQuest({
           },
         );
         setQuest((current) => (current ? { ...current, session: result.session } : current));
-        setPhase(
-          result.session.state === "PAUSED"
-            ? `ATTENTION INTERRUPTED — ${formatAttentionReason(result.session.lastAttentionReason)}`
-            : "VERIFIED ATTENTION",
-        );
+        if (result.session.state === "ATTENTION_VERIFIED") {
+          setTracking(false);
+          videoRef.current?.pause();
+          setPlaying(false);
+          setPhase("ATTENTION VERIFIED");
+        } else {
+          setPhase(
+            result.session.state === "PAUSED"
+              ? `ATTENTION INTERRUPTED — ${formatAttentionReason(result.session.lastAttentionReason)}`
+              : "VERIFIED ATTENTION",
+          );
+        }
       } catch (cause) {
         videoRef.current?.pause();
         setPlaying(false);
@@ -193,7 +205,8 @@ export function SponsorQuest({
 
   async function finishQuest(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!quest) return;
+    if (!quest || claimInFlightRef.current) return;
+    claimInFlightRef.current = true;
     videoRef.current?.pause();
     setPlaying(false);
     setTracking(false);
@@ -225,6 +238,7 @@ export function SponsorQuest({
       await onComplete(presentation, settled.transactionHash);
       setPhase("COMPLETED");
     } catch (cause) {
+      claimInFlightRef.current = false;
       const message = cause instanceof Error ? cause.message : "QUEST_COMPLETION_FAILED";
       setPhase(
         message.includes("RECEIPT_EXPIRED")
@@ -284,10 +298,15 @@ export function SponsorQuest({
   }
 
   const requiredMs = quest.campaign.requiredActiveSeconds * 1_000;
-  const progress = Math.min(100, Math.floor((quest.session.accumulatedActiveMs / requiredMs) * 100));
+  const creditedActiveMs = Math.min(quest.session.accumulatedActiveMs, requiredMs);
+  const progress = Math.min(100, Math.floor((creditedActiveMs / requiredMs) * 100));
   const eligible =
-    ["ACTIVE", "PAUSED"].includes(quest.session.state) &&
-    quest.session.accumulatedActiveMs >= requiredMs;
+    quest.session.state === "ATTENTION_VERIFIED" || creditedActiveMs >= requiredMs;
+  const verifiedSeconds = Math.min(
+    quest.campaign.requiredActiveSeconds,
+    Math.floor(creditedActiveMs / 1_000),
+  );
+  const remainingSeconds = Math.max(0, Math.ceil((requiredMs - creditedActiveMs) / 1_000));
 
   return (
     <section className="quest-console" aria-labelledby="quest-heading" ref={questConsoleRef}>
@@ -354,30 +373,47 @@ export function SponsorQuest({
           </video>
           <p className="quest-copy">Independent transactions can execute concurrently while Monad preserves EVM compatibility and deterministic results.</p>
           <p className="sr-only" id="quest-video-description">Playback must remain active at normal speed while this page is visible, focused, and fullscreen. Pausing, seeking, buffering, entering Picture-in-Picture, or leaving fullscreen pauses earned time.</p>
-          <button className="media-control" onClick={enterAttentionMode} type="button">
-            {playing ? "PAUSE ATTENTION SESSION" : "ENTER ATTENTION MODE"}
-          </button>
+          {!eligible ? (
+            <button className="media-control" onClick={enterAttentionMode} type="button">
+              {playing ? "PAUSE ATTENTION SESSION" : "ENTER ATTENTION MODE"}
+            </button>
+          ) : null}
         </div>
         <div className="quest-progress">
           <span>ATTENTION PROOF</span>
-          <strong>{Math.floor(quest.session.accumulatedActiveMs / 1_000)}s / {quest.campaign.requiredActiveSeconds}s</strong>
+          <strong>
+            {eligible
+              ? "✓ VERIFIED ACTIVE VIEW"
+              : `${verifiedSeconds} / ${quest.campaign.requiredActiveSeconds} SEC VERIFIED`}
+          </strong>
+          <small>
+            {eligible
+              ? `${quest.campaign.requiredActiveSeconds} / ${quest.campaign.requiredActiveSeconds} SEC VERIFIED`
+              : `${remainingSeconds} SEC REMAINING`}
+          </small>
           <div className="progress-track"><i style={{ width: `${progress}%` }} /></div>
-          <ul className="attention-signals" aria-label="Current attention proof signals">
-            <AttentionSignal active={attentionSignals.documentVisible} label="TAB VISIBLE" />
-            <AttentionSignal active={attentionSignals.windowFocused} label="WINDOW FOCUSED" />
-            <AttentionSignal active={attentionSignals.fullscreen} label="FULLSCREEN" />
-            <AttentionSignal active={attentionSignals.mediaPlaying && !attentionSignals.buffering} label="VIDEO PLAYING" />
-            <AttentionSignal active={!attentionSignals.pictureInPicture} label="PICTURE-IN-PICTURE OFF" />
-            <AttentionSignal active={Math.abs(attentionSignals.playbackRate - 1) <= 0.001} label="SPEED 1.0×" />
-          </ul>
-          <p>Server time advances only when every signal passes and video time moves continuously with the heartbeat interval.</p>
+          {!eligible ? (
+            <>
+              <ul className="attention-signals" aria-label="Current attention proof signals">
+                <AttentionSignal active={attentionSignals.documentVisible} label="TAB VISIBLE" />
+                <AttentionSignal active={attentionSignals.windowFocused} label="WINDOW FOCUSED" />
+                <AttentionSignal active={attentionSignals.fullscreen} label="FULLSCREEN" />
+                <AttentionSignal active={attentionSignals.mediaPlaying && !attentionSignals.buffering} label="VIDEO PLAYING" />
+                <AttentionSignal active={!attentionSignals.pictureInPicture} label="PICTURE-IN-PICTURE OFF" />
+                <AttentionSignal active={Math.abs(attentionSignals.playbackRate - 1) <= 0.001} label="SPEED 1.0×" />
+              </ul>
+              <p>Server time advances only when every signal passes and video time moves continuously with the heartbeat interval.</p>
+            </>
+          ) : (
+            <p>Required attention is verified. Claim the reward to authorize settlement on Monad Testnet.</p>
+          )}
           {phase === "QUEST EXPIRED" ? (
             <button className="retry-control" onClick={startQuest} type="button">START A FRESH QUEST</button>
           ) : null}
           <form onSubmit={finishQuest}>
-            <p>Complete the required eligible attention time to unlock settlement. No quiz or text answer is required.</p>
-            <button disabled={!eligible || phase.includes("FINALIZING") || phase.includes("BUILDING") || phase === "QUEST EXPIRED"} type="submit">
-              {eligible ? "SETTLE REWARD ON MONAD" : `ACTIVE VIEW ${progress}%`}
+            <p>{eligible ? `Reward ready: +${quest.campaign.creditReward} CE` : "Complete the required eligible attention time to unlock settlement. No quiz or text answer is required."}</p>
+            <button disabled={!eligible || phase.includes("AUTHORIZING") || phase.includes("FINALIZING") || phase.includes("BUILDING") || phase === "QUEST EXPIRED"} type="submit">
+              {eligible ? `CLAIM +${quest.campaign.creditReward} CE` : `ACTIVE VIEW ${progress}%`}
             </button>
           </form>
           {error ? <p className="quest-error" role="alert">{error}</p> : null}

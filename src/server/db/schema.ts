@@ -25,6 +25,7 @@ export const questState = pgEnum("quest_state", [
   "CREATED",
   "ACTIVE",
   "PAUSED",
+  "ATTENTION_VERIFIED",
   "VERIFYING",
   "AUTHORIZED",
   "SETTLING",

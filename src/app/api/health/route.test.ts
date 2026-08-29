@@ -73,21 +73,37 @@ describe("runtime health", () => {
 
   it("reports ready only after both database and observed Monad preflights pass", async () => {
     for (const [key, value] of Object.entries(completeRuntime)) vi.stubEnv(key, value);
-    mocks.execute.mockResolvedValue([{ ready: 1 }]);
+    vi.stubEnv("RENDER_GIT_COMMIT", "abc123");
+    mocks.execute.mockResolvedValue([{ requiredActiveSeconds: 30 }]);
     mocks.getCachedMonadPreflight.mockResolvedValue(monadReady);
     const response = await GET();
     const body = await response.json();
     expect(response.status).toBe(200);
     expect(body).toMatchObject({
       status: "ready",
-      services: { database: "observed_ready", escrow: "observed_deployed", relayer: "observed_funded" },
+      buildRevision: "abc123",
+      campaign: { requiredActiveSeconds: 30, configuredActiveSeconds: 30, durationMatchesConfig: true },
+      services: { database: "observed_ready", campaign: "observed_match", escrow: "observed_deployed", relayer: "observed_funded" },
       issues: [],
+    });
+  });
+
+  it("fails closed and reports effective campaign duration when configuration drifts", async () => {
+    for (const [key, value] of Object.entries(completeRuntime)) vi.stubEnv(key, value);
+    mocks.execute.mockResolvedValue([{ requiredActiveSeconds: 20 }]);
+    mocks.getCachedMonadPreflight.mockResolvedValue(monadReady);
+    const response = await GET();
+    expect(response.status).toBe(503);
+    expect(await response.json()).toMatchObject({
+      status: "preflight_failed",
+      campaign: { requiredActiveSeconds: 20, configuredActiveSeconds: 30, durationMatchesConfig: false },
+      issues: ["CAMPAIGN_DURATION_CONFIG_DRIFT"],
     });
   });
 
   it("fails closed when observed Monad state is unsafe", async () => {
     for (const [key, value] of Object.entries(completeRuntime)) vi.stubEnv(key, value);
-    mocks.execute.mockResolvedValue([{ ready: 1 }]);
+    mocks.execute.mockResolvedValue([{ requiredActiveSeconds: 30 }]);
     mocks.getCachedMonadPreflight.mockResolvedValue({
       ...monadReady,
       ready: false,

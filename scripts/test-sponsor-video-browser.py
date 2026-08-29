@@ -31,9 +31,10 @@ def main():
     page_errors = []
     sequence = 0
     accumulated_ms = 0
+    force_complete = False
 
     def api(route: Route):
-        nonlocal sequence, accumulated_ms
+        nonlocal sequence, accumulated_ms, force_complete
         request = route.request
         path = urlparse(request.url).path
         if path.startswith("/api/"):
@@ -76,7 +77,7 @@ def main():
                             "creativeTitle": "Monad parallel execution in 30 seconds",
                             "completionQuestion": "What execution model processes independent work concurrently?",
                             "creditReward": 20,
-                            "requiredActiveSeconds": 30,
+                            "requiredActiveSeconds": 20,
                         },
                     }
                 ),
@@ -105,7 +106,8 @@ def main():
                 reason = "PLAYBACK_RATE_CHANGED"
             eligible = reason == "VERIFIED"
             if eligible:
-                accumulated_ms += 3000
+                accumulated_ms = 20_000 if force_complete else min(20_000, accumulated_ms + 3000)
+            attention_verified = accumulated_ms >= 20_000
             route.fulfill(
                 status=200,
                 content_type="application/json",
@@ -113,11 +115,11 @@ def main():
                     {
                         "session": {
                             "id": SESSION_ID,
-                            "state": "ACTIVE" if eligible else "PAUSED",
+                            "state": "ATTENTION_VERIFIED" if attention_verified else ("ACTIVE" if eligible else "PAUSED"),
                             "accumulatedActiveMs": accumulated_ms,
                             "lastHeartbeatSequence": sequence,
-                            "lastHeartbeatEligible": eligible,
-                            "lastAttentionReason": reason,
+                            "lastHeartbeatEligible": eligible and not attention_verified,
+                            "lastAttentionReason": "ATTENTION_VERIFIED" if attention_verified else reason,
                         }
                     }
                 ),
@@ -263,6 +265,16 @@ def main():
         ended = wait_for_payload(page, heartbeat_payloads, lambda item: item["mediaPlaying"] is False, ended_index)
         assert ended["mediaPlaying"] is False
 
+        force_complete = True
+        page.get_by_role("button", name="ENTER ATTENTION MODE").click()
+        page.get_by_text("✓ VERIFIED ACTIVE VIEW").wait_for(timeout=5000)
+        page.get_by_text("20 / 20 SEC VERIFIED").wait_for()
+        page.get_by_role("button", name="CLAIM +20 CE").wait_for()
+        assert page.get_by_role("button", name="ENTER ATTENTION MODE").count() == 0
+        frozen_heartbeat_count = len(heartbeat_payloads)
+        page.wait_for_timeout(3500)
+        assert len(heartbeat_payloads) == frozen_heartbeat_count
+
         screenshot = Path(os.environ.get("BROWSER_TEST_SCREENSHOT", "/tmp/computequest-sponsor-video-browser.png"))
         screenshot.parent.mkdir(parents=True, exist_ok=True)
         page.screenshot(path=str(screenshot), full_page=True)
@@ -273,6 +285,8 @@ def main():
             "observedBackground": background,
             "observedForeground": foreground,
             "observedEnded": ended,
+            "observedAttentionVerified": True,
+            "heartbeatsStoppedAtRequirement": len(heartbeat_payloads) == frozen_heartbeat_count,
             "videoCurrentTime": video.evaluate("element => element.currentTime"),
             "videoDuration": video.evaluate("element => element.duration"),
             "screenshot": str(screenshot),

@@ -6,7 +6,7 @@
 
 ComputeQuest is a sponsored-compute platform. A user requests useful AI work; if their balance is too low, they can voluntarily complete a short sponsor experience. ComputeQuest measures eligible active attention, settles a signed reward through a replay-protected contract on Monad Testnet, issues non-transferable Compute Energy (CE), and automatically starts the original Gemini job.
 
-The current release proves one narrow workload end to end: an eight-slide pitch deck costing 24 CE. New sessions receive 4 CE, and the sample campaign awards the 20 CE funding gap after 30 seconds of verified attention.
+The current release proves one narrow workload end to end: an eight-slide pitch deck costing 24 CE. New sessions receive 4 CE, and the sample campaign awards the 20 CE funding gap after 20 seconds of verified attention.
 
 ## Product screenshots
 
@@ -90,7 +90,7 @@ Completed presentations are rendered as slide previews and can be downloaded as 
 
 ## Verified evidence
 
-- Application: lint, TypeScript, 70 default Vitest tests, 15 real PostgreSQL integration tests, and production build pass.
+- Application: lint, TypeScript, 71 default Vitest tests, 16 real PostgreSQL integration tests, and production build pass.
 - Contract: 5 Foundry tests cover valid settlement, replay rejection, wrong verifier, expiry, pause, withdrawal, and a viem/Solidity EIP-712 golden vector.
 - Browser media: the controlled edge-state gate covers play, pause, buffering, ended, focus, and visibility boundaries. Separately, the unmocked production golden path earned 32,995 ms through the real heartbeat API in Chromium.
 - Gemini: the configured `gemini-3.5-flash-lite` provider completed the golden-path pitch deck and persisted a completed job.
@@ -197,7 +197,7 @@ Settlement submission simulates the call, estimates its Monad gas requirement, a
 
 Quest attempts expire after 15 minutes. Expiry is persisted server-side, stops heartbeat traffic, and lets the same task restart with a fresh nonce and zero accumulated time; an expired nonce can never be revived.
 
-The Watch Sponsor Quest uses a captioned 40-second Monad promotional video at `public/media/monad-parallel-execution.mp4`, generated reproducibly from the Remotion composition in `video/` by `corepack pnpm media:generate:sponsor`. It uses Monad's official palette and logo geometry, current documentation-backed claims, burned-in Caption JSON, and a subtle generated stereo sound bed. The campaign still requires 30 seconds of verified attention, leaving enough heartbeat margin before the creative ends. Attention mode requires fullscreen and reports video time, duration, playback speed, visibility, focus, buffering, seeking, and Picture-in-Picture state. The server compares video-time movement with its own heartbeat interval before crediting time; a forward seek, rate change, oversized gap, hidden document, lost focus, fullscreen exit, buffering event, or stopped video earns zero for that interval.
+The Watch Sponsor Quest uses a captioned 40-second Monad promotional video at `public/media/monad-parallel-execution.mp4`, generated reproducibly from the Remotion composition in `video/` by `corepack pnpm media:generate:sponsor`. It uses Monad's official palette and logo geometry, current documentation-backed claims, burned-in Caption JSON, and a subtle generated stereo sound bed. The current campaign requires 20 seconds of verified attention; video duration and rewarded duration are intentionally separate. Attention mode requires fullscreen and reports video time, duration, playback speed, visibility, focus, buffering, seeking, and Picture-in-Picture state. The server compares video-time movement with its own heartbeat interval before crediting time; a forward seek, rate change, oversized gap, hidden document, lost focus, fullscreen exit, buffering event, or stopped video earns zero for that interval. Credited time is capped at the campaign requirement and persisted as `ATTENTION_VERIFIED` before the user explicitly claims the reward.
 
 The Monad creative is an independent hackathon sample campaign, not an official paid Monad advertisement. Each persisted user can receive at most one successful reward from a campaign. `campaign_reward_claims` separates that invariant from restartable quest attempts: the original verified quest can retry a failed settlement, while a different task cannot claim the same campaign reward.
 

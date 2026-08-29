@@ -52,7 +52,7 @@ services:
       - key: DEMO_ONCHAIN_REWARD_WEI
         value: "1000000000000000"
       - key: DEMO_QUEST_SECONDS
-        value: "30"
+        value: "20"
       - key: DEMO_MAX_COMPLETIONS
         value: "20"
       - key: DEMO_QUEST_ANSWER

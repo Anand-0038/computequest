@@ -135,6 +135,27 @@ export async function recordHeartbeat(input: {
       .for("update")
       .limit(1);
     if (!session) throw new Error("QUEST_NOT_FOUND");
+    const [campaign] = await tx
+      .select({ requiredActiveSeconds: campaigns.requiredActiveSeconds })
+      .from(campaigns)
+      .where(eq(campaigns.id, session.campaignId))
+      .limit(1);
+    if (!campaign) throw new Error("ACTIVE_CAMPAIGN_NOT_FOUND");
+    const requiredActiveMs = campaign.requiredActiveSeconds * 1_000;
+    if (session.state === "ATTENTION_VERIFIED" || session.accumulatedActiveMs >= requiredActiveMs) {
+      const [verified] = await tx
+        .update(questSessions)
+        .set({
+          state: "ATTENTION_VERIFIED",
+          accumulatedActiveMs: requiredActiveMs,
+          lastHeartbeatEligible: false,
+          lastAttentionReason: "ATTENTION_VERIFIED",
+          updatedAt: now,
+        })
+        .where(eq(questSessions.id, session.id))
+        .returning();
+      return verified;
+    }
     if (!["CREATED", "ACTIVE", "PAUSED"].includes(session.state)) {
       throw new Error("QUEST_NOT_HEARTBEATABLE");
     }
@@ -149,17 +170,22 @@ export async function recordHeartbeat(input: {
     });
     if (!transition.accepted) throw new Error(transition.reason);
 
-    const accumulatedActiveMs = session.accumulatedActiveMs + transition.creditedMs;
+    const remainingActiveMs = requiredActiveMs - session.accumulatedActiveMs;
+    const creditedMs = Math.min(transition.creditedMs, remainingActiveMs);
+    const accumulatedActiveMs = session.accumulatedActiveMs + creditedMs;
+    const attentionVerified = accumulatedActiveMs >= requiredActiveMs;
+    const nextState = attentionVerified ? "ATTENTION_VERIFIED" : transition.nextState;
+    const reason = attentionVerified ? "ATTENTION_VERIFIED" : transition.reason;
     const [updated] = await tx
       .update(questSessions)
       .set({
-        state: transition.nextState,
+        state: nextState,
         accumulatedActiveMs,
         lastHeartbeatAt: now,
         lastHeartbeatSequence: input.heartbeat.sequence,
-        lastHeartbeatEligible: transition.eligible,
+        lastHeartbeatEligible: attentionVerified ? false : transition.eligible,
         lastMediaTimeMs: input.heartbeat.mediaTimeMs,
-        lastAttentionReason: transition.reason,
+        lastAttentionReason: reason,
         updatedAt: now,
       })
       .where(eq(questSessions.id, session.id))
@@ -170,8 +196,8 @@ export async function recordHeartbeat(input: {
       serverTimestamp: now.toISOString(),
       heartbeat: input.heartbeat,
       eligible: transition.eligible,
-      reason: transition.reason,
-      creditedMs: transition.creditedMs,
+      reason,
+      creditedMs,
     };
     await tx.insert(attentionEvents).values({
       id: crypto.randomUUID(),
@@ -188,8 +214,8 @@ export async function recordHeartbeat(input: {
       buffering: input.heartbeat.buffering,
       mediaPlaying: input.heartbeat.mediaPlaying,
       eligible: transition.eligible,
-      reason: transition.reason,
-      creditedMs: transition.creditedMs,
+      reason,
+      creditedMs,
       eventHash: createHash("sha256").update(JSON.stringify(eventPayload)).digest("hex"),
     });
     return updated;

@@ -71,7 +71,7 @@ export async function authorizeQuestCompletion(input: {
     if (existing && !refreshExpiredAuthorization) return existing;
     const authorizableStates = refreshExpiredAuthorization
       ? ["AUTHORIZED", "SETTLEMENT_FAILED"]
-      : ["ACTIVE", "PAUSED"];
+      : ["ACTIVE", "PAUSED", "ATTENTION_VERIFIED"];
     if (!authorizableStates.includes(session.state)) throw new Error(`QUEST_NOT_AUTHORIZABLE:${session.state}`);
 
     const [campaign] = await tx
@@ -83,6 +83,7 @@ export async function authorizeQuestCompletion(input: {
     if (session.accumulatedActiveMs < campaign.requiredActiveSeconds * 1_000) {
       throw new Error("QUEST_DURATION_INCOMPLETE");
     }
+    const requiredActiveMs = campaign.requiredActiveSeconds * 1_000;
 
     const [insertedClaim] = await tx
       .insert(campaignRewardClaims)
@@ -185,7 +186,14 @@ export async function authorizeQuestCompletion(input: {
       .where(eq(campaignRewardClaims.id, claim.id));
     await tx
       .update(questSessions)
-      .set({ state: "AUTHORIZED", completionAnsweredAt: now, updatedAt: now })
+      .set({
+        state: "AUTHORIZED",
+        accumulatedActiveMs: requiredActiveMs,
+        lastHeartbeatEligible: false,
+        lastAttentionReason: "ATTENTION_VERIFIED",
+        completionAnsweredAt: now,
+        updatedAt: now,
+      })
       .where(eq(questSessions.id, session.id));
     return settlement;
   });

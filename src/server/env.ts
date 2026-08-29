@@ -20,7 +20,7 @@ const runtimeEnvSchema = z.object({
   DEMO_CAMPAIGN_ID: z.string().uuid(),
   DEMO_ONCHAIN_CAMPAIGN_ID: z.coerce.bigint().positive(),
   DEMO_ONCHAIN_REWARD_WEI: z.coerce.bigint().positive(),
-  DEMO_QUEST_SECONDS: z.coerce.number().int().min(10).max(300).default(30),
+  DEMO_QUEST_SECONDS: z.coerce.number().int().min(10).max(300).default(20),
   DEMO_MAX_COMPLETIONS: z.coerce.number().int().min(1).max(1_000).default(20),
   DEMO_QUEST_ANSWER: z.string().trim().min(2).max(100),
 });

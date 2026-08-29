@@ -615,6 +615,83 @@ describe.skipIf(!integrationDatabaseUrl)("PostgreSQL service integration", () =>
     expect(evidence.every((event) => /^[0-9a-f]{64}$/.test(event.eventHash))).toBe(true);
   });
 
+  it("caps credited attention at the campaign requirement and freezes further heartbeats", async () => {
+    const db = getDatabase();
+    const userId = crypto.randomUUID();
+    const campaignId = crypto.randomUUID();
+    await db.insert(users).values({ id: userId });
+    await db.insert(campaigns).values({
+      id: campaignId,
+      onchainCampaignId: BigInt(1),
+      creditReward: QUEST_REWARD,
+      onchainRewardWei: BigInt(1),
+      requiredActiveSeconds: 5,
+      creativeTitle: "Five-second attention cap",
+      completionQuestion: "Legacy campaign metadata",
+      completionAnswerHash: "not-used-in-this-test",
+      remainingBudget: QUEST_REWARD,
+      active: true,
+    });
+    const task = await createPresentationTask({
+      userId,
+      prompt: "Create a pitch deck proving capped attention accounting.",
+    });
+    const quest = await createQuestSession({ campaignId, taskId: task.task.id, userId });
+    const active = {
+      documentVisible: true,
+      windowFocused: true,
+      mediaPlaying: true,
+      fullscreen: true,
+      pictureInPicture: false,
+      buffering: false,
+      playbackRate: 1,
+      durationMs: 40_000,
+    };
+    const startedAt = quest.session.serverStartedAt;
+    await recordHeartbeat({
+      sessionId: quest.session.id,
+      userId,
+      heartbeat: { sequence: 1, ...active, mediaTimeMs: 0 },
+      now: startedAt,
+    });
+    await recordHeartbeat({
+      sessionId: quest.session.id,
+      userId,
+      heartbeat: { sequence: 2, ...active, mediaTimeMs: 3_000 },
+      now: new Date(startedAt.getTime() + 3_000),
+    });
+    const verified = await recordHeartbeat({
+      sessionId: quest.session.id,
+      userId,
+      heartbeat: { sequence: 3, ...active, mediaTimeMs: 6_000 },
+      now: new Date(startedAt.getTime() + 6_000),
+    });
+    const frozen = await recordHeartbeat({
+      sessionId: quest.session.id,
+      userId,
+      heartbeat: { sequence: 4, ...active, mediaTimeMs: 9_000 },
+      now: new Date(startedAt.getTime() + 9_000),
+    });
+
+    expect(verified).toMatchObject({
+      state: "ATTENTION_VERIFIED",
+      accumulatedActiveMs: 5_000,
+      lastHeartbeatEligible: false,
+      lastAttentionReason: "ATTENTION_VERIFIED",
+    });
+    expect(frozen).toMatchObject({ state: "ATTENTION_VERIFIED", accumulatedActiveMs: 5_000 });
+    const evidence = await db
+      .select()
+      .from(attentionEvents)
+      .where(eq(attentionEvents.questSessionId, quest.session.id));
+    expect(evidence).toHaveLength(3);
+    expect(evidence.at(-1)).toMatchObject({
+      sequence: 3,
+      reason: "ATTENTION_VERIFIED",
+      creditedMs: 2_000,
+    });
+  });
+
   it("expires a stale attempt and safely renews the same task with a fresh nonce", async () => {
     const db = getDatabase();
     const userId = crypto.randomUUID();
@@ -768,7 +845,7 @@ describe.skipIf(!integrationDatabaseUrl)("PostgreSQL service integration", () =>
     });
     await db
       .update(questSessions)
-      .set({ state: "SETTLEMENT_FAILED", accumulatedActiveMs: 30_000 })
+      .set({ state: "SETTLEMENT_FAILED", accumulatedActiveMs: 65_000 })
       .where(eq(questSessions.id, quest.session.id));
     const signTypedData = vi.fn().mockResolvedValue(`0x${"4".repeat(130)}`);
     vi.spyOn(monad, "assertOnchainVerifier").mockResolvedValue({ signTypedData } as never);
@@ -784,6 +861,7 @@ describe.skipIf(!integrationDatabaseUrl)("PostgreSQL service integration", () =>
     expect(signTypedData).toHaveBeenCalledOnce();
     const [refreshedQuest] = await db.select().from(questSessions).where(eq(questSessions.id, quest.session.id));
     expect(refreshedQuest.state).toBe("AUTHORIZED");
+    expect(refreshedQuest.accumulatedActiveMs).toBe(30_000);
   });
 
   it("preserves a reverted transaction and confirms a later relay attempt", async () => {

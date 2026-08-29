@@ -1,8 +1,75 @@
 # ComputeQuest
 
-ComputeQuest turns verified sponsor attention into compute credits for useful AI work. A user submits a pitch-deck brief; when their ledger balance is insufficient, they complete a server-timed sponsor quest, settle its signed reward on Monad Testnet, and spend the confirmed credits on a schema-validated Gemini generation job.
+> Turn verified sponsor attention into useful AI compute.
 
-Status: public hackathon deployment. The escrow and funded campaign are deployed and source-verified on Monad Testnet. A complete local production golden path passed with real Chromium, PostgreSQL, server-timed attention, a confirmed Testnet settlement, and completed Gemini structured output. The Render deployment is live and its public health check observes the hosted database and read-only Monad escrow preflight.
+[Live demo](https://computequest.onrender.com) · [Monad Testnet contract](https://testnet.monadvision.com/address/0xe9c37c275C78Bb9259F25e7C47471E54808dC94b) · [Verified settlement](https://testnet.monadvision.com/tx/0x01a79519e53c58fb849f6179cd212aba8833269b8d630b0e25df75b6abe48d70)
+
+ComputeQuest is a sponsored-compute platform. A user requests useful AI work; if their balance is too low, they can voluntarily complete a short sponsor experience. ComputeQuest measures eligible active attention, settles a signed reward through a replay-protected contract on Monad Testnet, issues non-transferable Compute Energy (CE), and automatically starts the original Gemini job.
+
+The current release proves one narrow workload end to end: an eight-slide pitch deck costing 24 CE. New sessions receive 4 CE, and the sample campaign awards the 20 CE funding gap after 30 seconds of verified attention.
+
+## Product screenshots
+
+<table>
+  <tr>
+    <td align="center"><strong>Request useful AI work</strong></td>
+    <td align="center"><strong>Verify eligible attention</strong></td>
+  </tr>
+  <tr>
+    <td><img src="docs/images/computequest-light-home.png" alt="ComputeQuest light-mode home screen with the Compute Cell" width="390"></td>
+    <td><img src="docs/images/computequest-light-attention.png" alt="ComputeQuest light-mode Sponsor Quest attention proof" width="390"></td>
+  </tr>
+</table>
+
+These responsive light-mode states were captured during local browser QA. The public deployment is linked above; the complete hosted settlement-to-Gemini flow remains a separate verification boundary.
+
+## How it works
+
+```text
+AI task (24 CE)
+      ↓
+Balance check (4 CE available)
+      ↓
+Sponsor Quest (+20 CE)
+      ↓
+Server-timed attention + comprehension proof
+      ↓
+EIP-712 authorization → CampaignEscrow on Monad
+      ↓
+Finalized settlement → append-only CE grant
+      ↓
+Exactly-once task spend → Gemini generation → persisted result
+```
+
+The three economic actors stay separate:
+
+- **Sponsor:** funds a campaign in exchange for an eligible attention session.
+- **User:** contributes attention and receives CE that can purchase AI service inside ComputeQuest.
+- **ComputeQuest:** verifies the session, relays settlement, accounts for CE, and runs the provider job.
+
+CE is not a token, is not transferable, and is not presented as money. Users do not need a wallet in the current flow. The Monad creative is an independent hackathon sample campaign, not an official paid Monad advertisement.
+
+## Current status
+
+| Boundary | Status | What is proven |
+| --- | --- | --- |
+| Public application | Live | Render serves the Next.js app; `/api/health` observes PostgreSQL and the expected Monad escrow/campaign state. |
+| Monad settlement | Verified | Contract deployment, funded campaign `1`, source match, and one successful Testnet completion are publicly inspectable. |
+| Local golden path | Passed | Real Chromium, PostgreSQL, server-timed attention, Testnet settlement, CE accounting, and Gemini structured output completed as one causal run. |
+| Hosted golden path | Pending | The revised public Render deployment has not yet consumed another campaign completion and run the entire flow. |
+| Real-money campaign | Not supported | Anonymous browser sessions are not a sufficient anti-Sybil boundary for open cash-backed rewards. |
+
+## Contents
+
+- [Architecture](#architecture)
+- [Verified evidence](#verified-evidence)
+- [Run locally](#run-locally)
+- [Cost and credit accounting](#cost-and-credit-accounting)
+- [Browser and media verification](#browser-and-media-verification)
+- [API surface](#api-surface)
+- [Security and correctness boundaries](#security-and-correctness-boundaries)
+- [Deployment](#deployment)
+- [Known limitations](#known-limitations)
 
 ## Architecture
 
@@ -17,11 +84,11 @@ Next.js UI and route handlers
         budget custody + replay protection
 ```
 
-There is no mock settlement, local-chain success mode, fixture AI output, or hardcoded live data. Missing infrastructure fails visibly.
+Missing infrastructure fails visibly. The production path does not substitute fixture AI output or a local-chain success mode.
 
 Completed presentations are rendered as slide previews and can be downloaded as the exact generated structured JSON. ComputeQuest does not claim PPTX or PDF export.
 
-## Current evidence
+## Verified evidence
 
 - Application: lint, TypeScript, 70 default Vitest tests, 15 real PostgreSQL integration tests, and production build pass.
 - Contract: 5 Foundry tests cover valid settlement, replay rejection, wrong verifier, expiry, pause, withdrawal, and a viem/Solidity EIP-712 golden vector.
@@ -29,9 +96,9 @@ Completed presentations are rendered as slide previews and can be downloaded as 
 - Gemini: the configured `gemini-3.5-flash-lite` provider completed the golden-path pitch deck and persisted a completed job.
 - Contract: [`0xe9c37c275C78Bb9259F25e7C47471E54808dC94b`](https://testnet.monadvision.com/address/0xe9c37c275C78Bb9259F25e7C47471E54808dC94b), campaign `1`, deployed and funded with `0.02` Testnet MON. Deployment transaction: [`0x8e4861…d8b67`](https://testnet.monadvision.com/tx/0x8e486125909d392c9a894d7199acb0283160dae32f67ca9b27154a9c5bbd8b67); campaign creation: [`0x4f8120…30726`](https://testnet.monadvision.com/tx/0x4f81205b061cd8386dbca5f2c083ac3f9613ee4a295013324633f93b07830726). Both receipts succeeded, runtime bytecode and campaign state were read back, and Sourcify reports a runtime source match.
 - Live settlement proof: [`0x01a795…e48d70`](https://testnet.monadvision.com/tx/0x01a79519e53c58fb849f6179cd212aba8833269b8d630b0e25df75b6abe48d70), receipt status `0x1`, completion count `1`, campaign budget remaining `0.019` Testnet MON.
-- Live URL: [https://computequest.onrender.com](https://computequest.onrender.com)
+- Live application: [https://computequest.onrender.com](https://computequest.onrender.com)
 
-## Setup
+## Run locally
 
 Requirements: Node.js 20+, Corepack/pnpm, Foundry 1.8+ for Monad deployment/verification, and PostgreSQL. The current development machine has Foundry 1.8.1, and the contract builds and simulates successfully against Monad Testnet.
 
@@ -43,6 +110,20 @@ corepack pnpm db:seed
 corepack pnpm verify
 corepack pnpm dev
 ```
+
+Open [http://localhost:3000](http://localhost:3000). The app intentionally remains unavailable when its database, chain, campaign, or signing configuration fails preflight.
+
+### Environment configuration
+
+Copy `.env.example` to `.env.local` and provide:
+
+- PostgreSQL connection and a stable session-signing secret;
+- a server-only Gemini API key and configured model;
+- Monad Testnet RPC, chain, explorer, deployed escrow, and deployment block;
+- separate verifier and relayer keys;
+- the PostgreSQL campaign UUID and confirmed numeric onchain campaign ID.
+
+Never expose `GEMINI_API_KEY`, `VERIFIER_PRIVATE_KEY`, `RELAYER_PRIVATE_KEY`, `DATABASE_URL`, or `SESSION_SIGNING_SECRET` through a `NEXT_PUBLIC_` variable. The campaign UUID is an internal database identifier; it is not the numeric campaign ID emitted by `CampaignEscrow`.
 
 ### Real PostgreSQL integration gate
 
@@ -57,7 +138,7 @@ The suite truncates its target tables, so never point `INTEGRATION_DATABASE_URL`
 
 The integration gate includes real concurrent transactions. A per-user PostgreSQL row lock serializes every balance decision against task spending, settlement crediting, provider refunds, and refunded-job retries. Tests prove two simultaneous 24 CE tasks fund exactly one job, and that a confirmed settlement racing a new task cannot produce a negative balance.
 
-### Cost and credit accounting
+## Cost and credit accounting
 
 ComputeQuest keeps three units separate:
 
@@ -73,7 +154,7 @@ Provider jobs allow at most three total attempts, including stale-lease recovery
 DATABASE_URL=postgresql://... corepack pnpm operator:provider-cost-report
 ```
 
-### Controlled browser media gate
+## Browser and media verification
 
 `scripts/test-sponsor-video-browser.py` drives the real UI and shipped MP4 in Chromium. It requires Python Playwright 1.55+, Google Chrome, and Xvfb on a headless Linux machine:
 
@@ -95,7 +176,7 @@ The deployment script at `contracts/script/DeployComputeQuest.s.sol` deploys the
 
 After deployment, `corepack pnpm contracts:preflight:deployed` must observe the exact escrow and campaign state before Render handoff. `corepack pnpm contracts:verify:testnet` submits the compiler configuration and constructor address to MonadVision's Sourcify endpoint using the public `VERIFIER_ADDRESS`, never a private key CLI argument, and waits for the verification result. Both commands passed against the deployment above.
 
-## Main routes
+## API surface
 
 - `GET /api/health` — configuration, live database query, observed Monad deployment/campaign preflight, and exact proof boundary.
 - `POST /api/session` — create or restore a signed HttpOnly anonymous session with an idempotent 4 CE initial grant and return its current ledger balance.
@@ -107,6 +188,8 @@ After deployment, `corepack pnpm contracts:preflight:deployed` must observe the 
 - `POST /api/quests/:sessionId/heartbeat` — accumulate server-authorized active time.
 - `POST /api/quests/:sessionId/authorize` — verify duration and completion answer, then sign the EIP-712 receipt.
 - `POST /api/quests/:sessionId/settle` — relay, confirm, atomically convert the settlement into credits, and automatically claim the funded Gemini job. Provider failure is returned separately from the already-confirmed settlement and refunds the job spend.
+
+## Security and correctness boundaries
 
 Credits are not granted merely because a transaction is mined. CE budget is reserved atomically before the verifier signs a receipt. The chain adapter then waits until Monad's `finalized` block reaches the settlement block, rechecks the consumed session hash, and converts the reservation into a grant. This prevents an onchain payout from succeeding after the offchain CE budget has already been promised elsewhere.
 
@@ -132,4 +215,21 @@ The Compute Cell reads the same persisted ledger state instead of animating a de
 
 `GET /api/health` returns `ready` only after a live PostgreSQL query and a read-only Monad preflight observe the expected chain ID, deployed escrow bytecode, verifier, active campaign, configured reward, remaining capacity and budget, relayer payout recipient, and a relayer balance above `RELAYER_MIN_BALANCE_WEI`. The preflight never sends a valid signed receipt to an RPC. Quest creation, authorization, and settlement enforce the same cached preflight before mutating state. Gemini remains `configured_unverified` until a real generation succeeds.
 
-`render.yaml` prepares one free Node web service and one free PostgreSQL database in Singapore. Because Render's pre-deploy command is a paid-service feature, the free service runs idempotent migrations and campaign seeding during its build phase, then starts Next.js directly within the free runtime memory limit. Render currently expires free PostgreSQL instances after 30 days; the Blueprint is appropriate for the hackathon, not durable production storage.
+## Deployment
+
+`render.yaml` prepares one free Node web service and one free PostgreSQL database in Singapore. Because Render's pre-deploy command is a paid-service feature, the free service runs idempotent migrations and campaign seeding during its build phase, then starts Next.js directly within the free runtime memory limit.
+
+The current public service is [computequest.onrender.com](https://computequest.onrender.com). Treat `/api/health` as the release gate: it must return `ready` only after observing the database and the expected read-only Monad deployment state. Deploying the UI alone does not prove the hosted golden path.
+
+## Known limitations
+
+- Identity is a signed anonymous browser session. Clearing it can create a new identity, so this release must not expose an uncapped cash-backed campaign.
+- Relayer transaction serialization is process-local. Multiple web instances require a database-backed outbox or dedicated nonce manager.
+- The deployed Testnet campaign demonstrates settlement mechanics; it is not evidence of commercial sponsor revenue.
+- CE is an internal service entitlement. There is no CE-to-MON or CE-to-fiat redemption path.
+- Gemini replacement-cost estimates use published pricing metadata; they are not reconciled Google invoice costs.
+- Render's free PostgreSQL instances expire after 30 days and are unsuitable for durable production storage.
+- The current AI workload returns structured slide JSON and previews, not PPTX or PDF files.
+- The browser can measure eligible active-attention signals, but it cannot prevent activity on another application, device, or monitor.
+
+These boundaries are intentional. The next production milestone is durable user identity and a capped, authorized sponsor pilot—not a larger feature surface.

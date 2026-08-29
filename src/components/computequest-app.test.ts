@@ -20,7 +20,9 @@ describe("ComputeQuest compute cell", () => {
   it("shows the real starter ledger balance before a task exists", () => {
     expect(deriveComputeCell({ activeStage: 0, sessionBalance: 4, sessionReady: true, task: null })).toMatchObject({
       balance: 4,
-      label: "24 CE / DECK",
+      label: "DECK COST · 24 CE",
+      shortage: 20,
+      target: 24,
     });
   });
 
@@ -30,7 +32,13 @@ describe("ComputeQuest compute cell", () => {
       sessionBalance: 4,
       sessionReady: true,
       task: { task: { id: "task", status: "AWAITING_CREDITS" }, balance: 4, shortage: 20 },
-    })).toMatchObject({ balance: 4, label: "20 CE GAP" });
+    })).toMatchObject({
+      balance: 4,
+      label: "FUNDING GAP",
+      shortage: 20,
+      target: 24,
+      detail: expect.stringContaining("+20 CE"),
+    });
   });
 
   it("shows the post-spend balance while generation is running", () => {

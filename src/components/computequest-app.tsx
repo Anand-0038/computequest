@@ -2,7 +2,9 @@
 
 import { FormEvent, useCallback, useEffect, useState, useSyncExternalStore } from "react";
 
+import { TASK_COST } from "@/domain/constants";
 import type { Presentation } from "@/domain/presentation";
+import { ComputeCell, type ComputeCellViewModel } from "@/components/compute-cell";
 import { SponsorQuest } from "@/components/sponsor-quest";
 
 type RuntimeStatus = {
@@ -242,19 +244,7 @@ export function ComputeQuestApp() {
           </p>
         </div>
 
-        <aside className="energy-panel" aria-label="Compute energy economics">
-          <div className="energy-topline">
-            <span>COMPUTE CELL</span>
-            <span>{computeCell.label}</span>
-          </div>
-          <div className="energy-orbit">
-            <span className="energy-core">
-              <strong>{computeCell.balance ?? "—"}</strong>
-              <small>CE</small>
-            </span>
-          </div>
-          <p>{computeCell.detail}</p>
-        </aside>
+        <ComputeCell cell={computeCell} />
       </section>
 
       <section className="cq-workbench" aria-labelledby="brief-title">
@@ -431,13 +421,15 @@ export function deriveComputeCell(input: {
   sessionBalance: number | null;
   sessionReady: boolean;
   task: TaskResponse | null;
-}) {
+}): ComputeCellViewModel {
   const balance = input.task?.balance ?? input.sessionBalance;
   if (!input.sessionReady) {
     return {
       balance: null,
-      label: "24 CE / DECK",
+      label: "CHECKING LEDGER",
       detail: "Runtime and ledger readiness are checked before accepting work.",
+      shortage: 0,
+      target: TASK_COST,
     };
   }
   if (input.task?.job?.status === "REFUNDED") {
@@ -445,6 +437,8 @@ export function deriveComputeCell(input: {
       balance,
       label: "CREDITS REFUNDED",
       detail: "The failed provider spend was returned to the ledger and the persisted job can be retried.",
+      shortage: 0,
+      target: TASK_COST,
     };
   }
   if (input.task?.job?.status === "FAILED") {
@@ -452,6 +446,8 @@ export function deriveComputeCell(input: {
       balance,
       label: "CREDITS REFUNDED",
       detail: "The final provider attempt could not be recovered. Its CE spend was returned; start a new task.",
+      shortage: 0,
+      target: TASK_COST,
     };
   }
   if (input.activeStage >= 5) {
@@ -459,25 +455,33 @@ export function deriveComputeCell(input: {
       balance,
       label: "JOB COMPLETE",
       detail: "The funded compute job completed and its structured result is persisted.",
+      shortage: 0,
+      target: TASK_COST,
     };
   }
   if (input.activeStage === 4 || input.task?.job?.status === "FUNDED") {
     return {
       balance,
       label: "AI WORKING",
-      detail: "The 24 CE task spend is committed while Gemini builds the presentation.",
+      detail: `The ${TASK_COST} CE task spend is committed while Gemini builds the presentation.`,
+      shortage: 0,
+      target: TASK_COST,
     };
   }
   if (input.task?.task?.status === "AWAITING_CREDITS") {
     return {
       balance,
-      label: `${input.task.shortage ?? 0} CE GAP`,
-      detail: "Complete the verified Sponsor Quest to close the gap before generation.",
+      label: "FUNDING GAP",
+      detail: `Earn +${input.task.shortage ?? 0} CE in the verified Sponsor Quest. Your task starts after Monad confirms the reward.`,
+      shortage: input.task.shortage ?? 0,
+      target: TASK_COST,
     };
   }
   return {
     balance,
-    label: "24 CE / DECK",
+    label: `DECK COST · ${TASK_COST} CE`,
     detail: "New sessions start with 4 CE. Confirmed quest rewards close the funding gap.",
+    shortage: Math.max(0, TASK_COST - (balance ?? 0)),
+    target: TASK_COST,
   };
 }

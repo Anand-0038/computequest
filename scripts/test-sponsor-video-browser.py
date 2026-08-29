@@ -162,7 +162,15 @@ def main():
         page.get_by_role("button", name="EARN 20 CE").click()
         video = page.locator("video.sponsor-video")
         video.wait_for(state="visible")
+        assert page.locator("#quest-answer").count() == 0
+        page.get_by_text("No quiz or text answer is required.", exact=False).wait_for()
         assert video.get_attribute("src") == "/media/monad-parallel-execution.mp4"
+        page.wait_for_function(
+            """() => {
+              const video = document.querySelector('video.sponsor-video');
+              return video && Number.isFinite(video.duration) && video.duration >= 30;
+            }"""
+        )
         assert video.evaluate("element => element.duration") >= 30
 
         page.get_by_role("button", name="ENTER ATTENTION MODE").click()

@@ -15,7 +15,6 @@ type Quest = {
   };
   campaign: {
     creativeTitle: string;
-    completionQuestion: string;
     creditReward: number;
     requiredActiveSeconds: number;
   };
@@ -71,7 +70,6 @@ export function SponsorQuest({
 }: Props) {
   const [quest, setQuest] = useState<Quest | null>(null);
   const [playing, setPlaying] = useState(false);
-  const [answer, setAnswer] = useState("");
   const [tracking, setTracking] = useState(false);
   const [phase, setPhase] = useState("READY TO EARN");
   const [error, setError] = useState<string | null>(null);
@@ -202,8 +200,8 @@ export function SponsorQuest({
     setError(null);
     await exitFullscreenIfActive();
     try {
-      setPhase("VERIFYING COMPLETION");
-      await postJson(`/api/quests/${quest.session.id}/authorize`, { answer });
+      setPhase("AUTHORIZING VERIFIED ATTENTION");
+      await postJson(`/api/quests/${quest.session.id}/authorize`);
       setPhase("SETTLEMENT FINALIZING");
       const settled = await postJson<{
         transactionHash: string;
@@ -377,10 +375,9 @@ export function SponsorQuest({
             <button className="retry-control" onClick={startQuest} type="button">START A FRESH QUEST</button>
           ) : null}
           <form onSubmit={finishQuest}>
-            <label htmlFor="quest-answer">{quest.campaign.completionQuestion}</label>
-            <input id="quest-answer" onChange={(event) => setAnswer(event.target.value)} value={answer} required />
-            <button disabled={!eligible || !answer.trim() || phase.includes("FINALIZING") || phase.includes("BUILDING") || phase === "QUEST EXPIRED"} type="submit">
-              {eligible ? "VERIFY & SETTLE ON MONAD" : `ACTIVE VIEW ${progress}%`}
+            <p>Complete the required eligible attention time to unlock settlement. No quiz or text answer is required.</p>
+            <button disabled={!eligible || phase.includes("FINALIZING") || phase.includes("BUILDING") || phase === "QUEST EXPIRED"} type="submit">
+              {eligible ? "SETTLE REWARD ON MONAD" : `ACTIVE VIEW ${progress}%`}
             </button>
           </form>
           {error ? <p className="quest-error" role="alert">{error}</p> : null}

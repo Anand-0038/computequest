@@ -32,7 +32,7 @@ Balance check (4 CE available)
       ↓
 Sponsor Quest (+20 CE)
       ↓
-Server-timed attention + comprehension proof
+Server-timed eligible attention
       ↓
 EIP-712 authorization → CampaignEscrow on Monad
       ↓
@@ -186,7 +186,7 @@ After deployment, `corepack pnpm contracts:preflight:deployed` must observe the 
 - `POST /api/jobs/:jobId/retry` — re-fund and retry a previously refunded provider job, up to the three-attempt cap, without losing ledger history.
 - `POST /api/quests` — create a quest session.
 - `POST /api/quests/:sessionId/heartbeat` — accumulate server-authorized active time.
-- `POST /api/quests/:sessionId/authorize` — verify duration and completion answer, then sign the EIP-712 receipt.
+- `POST /api/quests/:sessionId/authorize` — verify the required eligible duration, then sign the EIP-712 receipt.
 - `POST /api/quests/:sessionId/settle` — relay, confirm, atomically convert the settlement into credits, and automatically claim the funded Gemini job. Provider failure is returned separately from the already-confirmed settlement and refunds the job spend.
 
 ## Security and correctness boundaries
@@ -205,7 +205,7 @@ The current identity is a signed anonymous browser session. Clearing that identi
 
 Every accepted heartbeat also writes an append-only `attention_events` record with its server timestamp, proof signals, credited milliseconds, eligibility reason, and SHA-256 event hash. This is auditable server-side evidence, not a claim that a browser can lock the rest of the operating system.
 
-Signed completion receipts have a separate 10-minute onchain lifetime. If an unsubmitted receipt expires, the backend persists a settlement failure without broadcasting it and requires the completion answer again before replacing the signature. A receipt with a submitted or confirmed transaction is never reset by this recovery path.
+Signed completion receipts have a separate 10-minute onchain lifetime. If an unsubmitted receipt expires, the backend persists a settlement failure without broadcasting it and rechecks the verified attention session before replacing the signature. A receipt with a submitted or confirmed transaction is never reset by this recovery path.
 
 Every relay claim creates an append-only settlement-attempt record. Reverted and submission-failed attempts retain their transaction hash or failure reason, while the settlement aggregate can safely move to a later attempt. Relayer writes are serialized within one application instance. If the process stops after broadcasting but before saving the hash, the backend recovers it from the indexed `CompletionSettled` event before continuing finalization. `GET /api/tasks/:taskId` returns the sanitized ordered attempt history with JSON-safe block numbers for reload recovery and demo evidence.
 

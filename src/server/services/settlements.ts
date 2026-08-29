@@ -1,6 +1,5 @@
 import { and, eq, sql } from "drizzle-orm";
 import type { Address, Hex } from "viem";
-import { keccak256, stringToHex } from "viem";
 
 import { TASK_COST } from "@/domain/constants";
 import {
@@ -37,7 +36,6 @@ import { expireQuestSessionIfNeeded } from "@/server/services/quests";
 export async function authorizeQuestCompletion(input: {
   sessionId: string;
   userId: string;
-  answer: string;
   now?: Date;
 }) {
   const env = requireRuntimeEnv();
@@ -84,10 +82,6 @@ export async function authorizeQuestCompletion(input: {
     if (!campaign || campaign.onchainCampaignId === null) throw new Error("CAMPAIGN_NOT_DEPLOYED");
     if (session.accumulatedActiveMs < campaign.requiredActiveSeconds * 1_000) {
       throw new Error("QUEST_DURATION_INCOMPLETE");
-    }
-    const normalizedAnswer = input.answer.trim().toLocaleLowerCase("en-US").replace(/\s+/g, " ");
-    if (keccak256(stringToHex(normalizedAnswer)) !== campaign.completionAnswerHash) {
-      throw new Error("QUEST_ANSWER_INCORRECT");
     }
 
     const [insertedClaim] = await tx

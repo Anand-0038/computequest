@@ -304,7 +304,6 @@ describe.skipIf(!integrationDatabaseUrl)("PostgreSQL service integration", () =>
     const db = getDatabase();
     const userId = crypto.randomUUID();
     const campaignId = crypto.randomUUID();
-    const answer = "parallel execution";
     await db.insert(users).values({ id: userId });
     await db.insert(campaigns).values({
       id: campaignId,
@@ -314,7 +313,7 @@ describe.skipIf(!integrationDatabaseUrl)("PostgreSQL service integration", () =>
       requiredActiveSeconds: 30,
       creativeTitle: "Monad parallel execution",
       completionQuestion: "What model runs independent work concurrently?",
-      completionAnswerHash: keccak256(stringToHex(answer)),
+      completionAnswerHash: keccak256(stringToHex("legacy campaign metadata")),
       remainingBudget: QUEST_REWARD * 2,
       active: true,
     });
@@ -335,10 +334,9 @@ describe.skipIf(!integrationDatabaseUrl)("PostgreSQL service integration", () =>
     const firstAuthorization = await authorizeQuestCompletion({
       sessionId: firstQuest.session.id,
       userId,
-      answer,
     });
     await expect(
-      authorizeQuestCompletion({ sessionId: secondQuest.session.id, userId, answer }),
+      authorizeQuestCompletion({ sessionId: secondQuest.session.id, userId }),
     ).rejects.toThrow("CAMPAIGN_REWARD_ALREADY_CLAIMED");
 
     expect(firstAuthorization.status).toBe("AUTHORIZED");
@@ -363,7 +361,6 @@ describe.skipIf(!integrationDatabaseUrl)("PostgreSQL service integration", () =>
   it("never signs more CE receipts than the campaign can fund", async () => {
     const db = getDatabase();
     const campaignId = crypto.randomUUID();
-    const answer = "parallel execution";
     const firstUserId = crypto.randomUUID();
     const secondUserId = crypto.randomUUID();
     await db.insert(users).values([{ id: firstUserId }, { id: secondUserId }]);
@@ -375,7 +372,7 @@ describe.skipIf(!integrationDatabaseUrl)("PostgreSQL service integration", () =>
       requiredActiveSeconds: 30,
       creativeTitle: "Monad parallel execution",
       completionQuestion: "What model runs independent work concurrently?",
-      completionAnswerHash: keccak256(stringToHex(answer)),
+      completionAnswerHash: keccak256(stringToHex("legacy campaign metadata")),
       remainingBudget: QUEST_REWARD,
       active: true,
     });
@@ -394,9 +391,9 @@ describe.skipIf(!integrationDatabaseUrl)("PostgreSQL service integration", () =>
     const signTypedData = vi.fn().mockResolvedValue(`0x${"4".repeat(130)}`);
     vi.spyOn(monad, "assertOnchainVerifier").mockResolvedValue({ signTypedData } as never);
 
-    await authorizeQuestCompletion({ sessionId: firstQuest.session.id, userId: firstUserId, answer });
+    await authorizeQuestCompletion({ sessionId: firstQuest.session.id, userId: firstUserId });
     await expect(
-      authorizeQuestCompletion({ sessionId: secondQuest.session.id, userId: secondUserId, answer }),
+      authorizeQuestCompletion({ sessionId: secondQuest.session.id, userId: secondUserId }),
     ).rejects.toThrow("OFFCHAIN_CAMPAIGN_BUDGET_UNAVAILABLE");
     expect(signTypedData).toHaveBeenCalledOnce();
     const [campaign] = await db.select().from(campaigns).where(eq(campaigns.id, campaignId));
@@ -730,11 +727,10 @@ describe.skipIf(!integrationDatabaseUrl)("PostgreSQL service integration", () =>
     expect(failedQuest.state).toBe("SETTLEMENT_FAILED");
   });
 
-  it("reauthorizes an expired pre-relay receipt only after answer validation", async () => {
+  it("reauthorizes an expired pre-relay receipt after verified attention without a quiz answer", async () => {
     const db = getDatabase();
     const userId = crypto.randomUUID();
     const campaignId = crypto.randomUUID();
-    const answer = "parallel execution";
     await db.insert(users).values({ id: userId });
     await db.insert(campaigns).values({
       id: campaignId,
@@ -744,7 +740,7 @@ describe.skipIf(!integrationDatabaseUrl)("PostgreSQL service integration", () =>
       requiredActiveSeconds: 30,
       creativeTitle: "Monad parallel execution",
       completionQuestion: "What model runs independent work concurrently?",
-      completionAnswerHash: keccak256(stringToHex(answer)),
+      completionAnswerHash: keccak256(stringToHex("legacy campaign metadata")),
       remainingBudget: QUEST_REWARD,
       active: true,
     });
@@ -778,10 +774,7 @@ describe.skipIf(!integrationDatabaseUrl)("PostgreSQL service integration", () =>
     vi.spyOn(monad, "assertOnchainVerifier").mockResolvedValue({ signTypedData } as never);
     const now = new Date("2026-08-29T06:00:00.000Z");
 
-    await expect(
-      authorizeQuestCompletion({ sessionId: quest.session.id, userId, answer: "wrong answer", now }),
-    ).rejects.toThrow("QUEST_ANSWER_INCORRECT");
-    const refreshed = await authorizeQuestCompletion({ sessionId: quest.session.id, userId, answer, now });
+    const refreshed = await authorizeQuestCompletion({ sessionId: quest.session.id, userId, now });
 
     expect(refreshed.id).toBe(settlementId);
     expect(refreshed.status).toBe("AUTHORIZED");

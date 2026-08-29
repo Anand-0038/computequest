@@ -7,16 +7,14 @@ import { requireSessionUserId } from "@/server/auth/session";
 import { authorizeQuestCompletion } from "@/server/services/settlements";
 
 const paramsSchema = z.object({ sessionId: z.string().uuid() });
-const requestSchema = z.object({ answer: z.string().trim().min(1).max(100) });
 
-export async function POST(request: Request, context: { params: Promise<{ sessionId: string }> }) {
+export async function POST(_request: Request, context: { params: Promise<{ sessionId: string }> }) {
   try {
     requireRuntimeEnv();
     const userId = await requireSessionUserId();
     await requireMonadRuntimeReady();
     const { sessionId } = paramsSchema.parse(await context.params);
-    const { answer } = requestSchema.parse(await request.json());
-    const settlement = await authorizeQuestCompletion({ sessionId, userId, answer });
+    const settlement = await authorizeQuestCompletion({ sessionId, userId });
     return NextResponse.json({
       settlement: {
         id: settlement.id,

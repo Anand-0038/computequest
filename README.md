@@ -2,7 +2,7 @@
 
 ComputeQuest turns verified sponsor attention into compute credits for useful AI work. A user submits a pitch-deck brief; when their ledger balance is insufficient, they complete a server-timed sponsor quest, settle its signed reward on Monad Testnet, and spend the confirmed credits on a schema-validated Gemini generation job.
 
-Status: active hackathon build. The escrow and funded campaign are deployed and source-verified on Monad Testnet. A complete local production golden path passed with real Chromium, PostgreSQL, server-timed attention, a confirmed Testnet settlement, and completed Gemini structured output. Render hosting and public release are not yet proven.
+Status: public hackathon deployment. The escrow and funded campaign are deployed and source-verified on Monad Testnet. A complete local production golden path passed with real Chromium, PostgreSQL, server-timed attention, a confirmed Testnet settlement, and completed Gemini structured output. The Render deployment is live and its public health check observes the hosted database and read-only Monad escrow preflight.
 
 ## Architecture
 
@@ -29,7 +29,7 @@ Completed presentations are rendered as slide previews and can be downloaded as 
 - Gemini: the configured `gemini-3.5-flash-lite` provider completed the golden-path pitch deck and persisted a completed job.
 - Contract: [`0xe9c37c275C78Bb9259F25e7C47471E54808dC94b`](https://testnet.monadvision.com/address/0xe9c37c275C78Bb9259F25e7C47471E54808dC94b), campaign `1`, deployed and funded with `0.02` Testnet MON. Deployment transaction: [`0x8e4861…d8b67`](https://testnet.monadvision.com/tx/0x8e486125909d392c9a894d7199acb0283160dae32f67ca9b27154a9c5bbd8b67); campaign creation: [`0x4f8120…30726`](https://testnet.monadvision.com/tx/0x4f81205b061cd8386dbca5f2c083ac3f9613ee4a295013324633f93b07830726). Both receipts succeeded, runtime bytecode and campaign state were read back, and Sourcify reports a runtime source match.
 - Live settlement proof: [`0x01a795…e48d70`](https://testnet.monadvision.com/tx/0x01a79519e53c58fb849f6179cd212aba8833269b8d630b0e25df75b6abe48d70), receipt status `0x1`, completion count `1`, campaign budget remaining `0.019` Testnet MON.
-- Live URL: pending Render deployment.
+- Live URL: [https://computequest.onrender.com](https://computequest.onrender.com)
 
 ## Setup
 
@@ -132,4 +132,4 @@ The Compute Cell reads the same persisted ledger state instead of animating a de
 
 `GET /api/health` returns `ready` only after a live PostgreSQL query and a read-only Monad preflight observe the expected chain ID, deployed escrow bytecode, verifier, active campaign, configured reward, remaining capacity and budget, relayer payout recipient, and a relayer balance above `RELAYER_MIN_BALANCE_WEI`. The preflight never sends a valid signed receipt to an RPC. Quest creation, authorization, and settlement enforce the same cached preflight before mutating state. Gemini remains `configured_unverified` until a real generation succeeds.
 
-`render.yaml` prepares one free Node web service and one free PostgreSQL database in Singapore. Because Render's pre-deploy command is a paid-service feature, the free service runs idempotent migrations and campaign seeding in its start command before starting Next.js. Render currently expires free PostgreSQL instances after 30 days; the Blueprint is appropriate for the hackathon, not durable production storage.
+`render.yaml` prepares one free Node web service and one free PostgreSQL database in Singapore. Because Render's pre-deploy command is a paid-service feature, the free service runs idempotent migrations and campaign seeding during its build phase, then starts Next.js directly within the free runtime memory limit. Render currently expires free PostgreSQL instances after 30 days; the Blueprint is appropriate for the hackathon, not durable production storage.

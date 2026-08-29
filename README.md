@@ -13,15 +13,15 @@ The current release proves one narrow workload end to end: an eight-slide pitch 
 <table>
   <tr>
     <td align="center"><strong>Request useful AI work</strong></td>
-    <td align="center"><strong>Verify eligible attention</strong></td>
+    <td align="center"><strong>Choose who sponsors the task</strong></td>
   </tr>
   <tr>
-    <td><img src="docs/images/computequest-light-home.png" alt="ComputeQuest light-mode home screen with the Compute Cell" width="390"></td>
-    <td><img src="docs/images/computequest-light-attention.png" alt="ComputeQuest light-mode Sponsor Quest attention proof" width="390"></td>
+    <td><img src="docs/images/computequest-light-home-current.png" alt="ComputeQuest light-mode home screen showing a 4 CE balance and the 20 CE sponsor funding path" width="620"></td>
+    <td><img src="docs/images/computequest-light-campaigns.png" alt="ComputeQuest light-mode campaign picker with PayZoll and Monad Sponsor Quests" width="620"></td>
   </tr>
 </table>
 
-These responsive light-mode states were captured during local browser QA. The public deployment is linked above and serves the same Git revision as this repository; the complete hosted settlement-to-Gemini flow remains a separate verification boundary.
+These light-mode states were captured from the public deployment on release `6298106`. The campaign capture used a fresh signed session and created a queued task, but did not start a quest or consume a campaign completion. The complete hosted settlement-to-Gemini flow remains a separate verification boundary.
 
 ## How it works
 
@@ -57,6 +57,7 @@ CE is not a token, is not transferable, and is not presented as money. Users do 
 | --- | --- | --- |
 | Public application | Live | Render serves the Next.js app; `/api/health` observes PostgreSQL and the expected Monad escrow/campaign state. |
 | Monad settlement | Verified | Contract deployment, funded campaign `1`, source match, and one successful Testnet completion are publicly inspectable. |
+| PayZoll campaign | Live | Funded campaign `2` is active with 20 available completions; a fresh public session lists it alongside Monad. |
 | Local golden path | Passed | Real Chromium, PostgreSQL, server-timed attention, Testnet settlement, CE accounting, and Gemini structured output completed as one causal run. |
 | Hosted golden path | Pending | The revised public Render deployment has not yet consumed another campaign completion and run the entire flow. |
 | Sponsor intake | Public | The deployed operator-reviewed form validates and stores bounded campaign requests. Its hosted UI and rejection boundary are verified; the first genuine sponsor submission remains pending. |
@@ -259,7 +260,7 @@ The current public service is [computequest.onrender.com](https://computequest.o
 - CE is an internal service entitlement. There is no CE-to-MON or CE-to-fiat redemption path.
 - Gemini replacement-cost estimates use published pricing metadata; they are not reconciled Google invoice costs.
 - Render's free PostgreSQL instances expire after 30 days and are unsuitable for durable production storage.
-- The current AI workload returns structured slide JSON and previews, not PPTX or PDF files.
+- The current AI workload exports slide previews, plain text, structured JSON, and a deterministic PDF. Native PPTX export is not implemented.
 - The browser can measure eligible active-attention signals, but it cannot prevent activity on another application, device, or monitor.
 
 These boundaries are intentional. The next production milestone is durable user identity and a capped, authorized sponsor pilot—not a larger feature surface.

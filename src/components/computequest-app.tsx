@@ -239,10 +239,13 @@ export function ComputeQuestApp() {
           <span>ComputeQuest</span>
         </a>
         <div className="cq-nav-actions">
-          <a className="sponsor-nav-link" href="#for-sponsors">FOR SPONSORS</a>
+          <a className="sponsor-nav-link" href="#for-sponsors">
+            <span className="sponsor-nav-full">FOR SPONSORS</span>
+            <span className="sponsor-nav-short">SPONSORS</span>
+          </a>
           <div className="cq-network" title="All settlement is restricted to Monad Testnet">
             <span className={health?.status === "ready" ? "status-dot ready" : "status-dot"} />
-            MONAD TESTNET
+            MONAD<span className="network-suffix"> TESTNET</span>
           </div>
           <button
             aria-label={theme === "dark" ? "Switch to light theme" : "Switch to dark theme"}
@@ -445,6 +448,22 @@ export function ComputeQuestApp() {
 
       <footer>
         <span>COMPUTEQUEST / SPONSORED COMPUTE ON MONAD</span>
+        <nav className="footer-proof-links" aria-label="Onchain proof">
+          <a
+            href="https://testnet.monadvision.com/address/0xe9c37c275C78Bb9259F25e7C47471E54808dC94b"
+            rel="noreferrer"
+            target="_blank"
+          >
+            CAMPAIGN ESCROW ↗
+          </a>
+          <a
+            href="https://testnet.monadvision.com/tx/0x01a79519e53c58fb849f6179cd212aba8833269b8d630b0e25df75b6abe48d70"
+            rel="noreferrer"
+            target="_blank"
+          >
+            VERIFIED SETTLEMENT EXAMPLE ↗
+          </a>
+        </nav>
       </footer>
     </main>
   );

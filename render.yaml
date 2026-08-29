@@ -37,6 +37,8 @@ services:
         value: https://testnet.monadvision.com
       - key: CAMPAIGN_ESCROW_ADDRESS
         sync: false
+      - key: CAMPAIGN_ESCROW_DEPLOYMENT_BLOCK
+        value: "57853062"
       - key: VERIFIER_PRIVATE_KEY
         sync: false
       - key: RELAYER_PRIVATE_KEY

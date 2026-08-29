@@ -13,6 +13,7 @@ import {
 } from "@/domain/settlement";
 import {
   assertOnchainVerifier,
+  findSettlementBySessionHash,
   isSessionConsumed,
   simulateCompletionSettlement,
   submitCompletionSettlement,
@@ -89,7 +90,7 @@ export async function authorizeQuestCompletion(input: {
       throw new Error("QUEST_ANSWER_INCORRECT");
     }
 
-    await tx
+    const [insertedClaim] = await tx
       .insert(campaignRewardClaims)
       .values({
         id: crypto.randomUUID(),
@@ -100,7 +101,24 @@ export async function authorizeQuestCompletion(input: {
       })
       .onConflictDoNothing({
         target: [campaignRewardClaims.campaignId, campaignRewardClaims.userId],
-      });
+      })
+      .returning({ id: campaignRewardClaims.id });
+    if (insertedClaim) {
+      const [reserved] = await tx
+        .update(campaigns)
+        .set({
+          reservedBudget: sql`${campaigns.reservedBudget} + ${campaign.creditReward}`,
+          updatedAt: now,
+        })
+        .where(
+          and(
+            eq(campaigns.id, campaign.id),
+            sql`${campaigns.remainingBudget} - ${campaigns.reservedBudget} >= ${campaign.creditReward}`,
+          ),
+        )
+        .returning({ reservedBudget: campaigns.reservedBudget });
+      if (!reserved) throw new Error("OFFCHAIN_CAMPAIGN_BUDGET_UNAVAILABLE");
+    }
     const [claim] = await tx
       .select()
       .from(campaignRewardClaims)
@@ -202,10 +220,56 @@ export async function settleQuestCompletion(input: { sessionId: string; userId: 
     throw new Error("SETTLEMENT_RETRY_COOLDOWN");
   }
 
-  if (!transactionHash && isCompletionReceiptExpired(receipt, new Date())) {
-    if (record.settlement.status === "SUBMITTING" && (await isSessionConsumed(receipt.sessionHash))) {
-      throw new Error("SESSION_CONSUMED_WITHOUT_TRACKED_TRANSACTION");
+  if (!transactionHash && ["SUBMITTING", "FAILED"].includes(record.settlement.status)) {
+    const recovered = await findSettlementBySessionHash(receipt.sessionHash);
+    if (recovered) {
+      const recoveredAt = new Date();
+      await db.transaction(async (tx) => {
+        const [persisted] = await tx
+          .update(settlements)
+          .set({
+            status: "SUBMITTED",
+            transactionHash: recovered.transactionHash,
+            blockNumber: recovered.blockNumber,
+            failureReason: null,
+            updatedAt: recoveredAt,
+          })
+          .where(
+            and(
+              eq(settlements.id, record.settlement.id),
+              sql`${settlements.transactionHash} is null`,
+              sql`${settlements.status} in ('SUBMITTING', 'FAILED')`,
+            ),
+          )
+          .returning({ id: settlements.id });
+        if (!persisted) throw new Error("SETTLEMENT_RECOVERY_STATE_CONFLICT");
+        const [latestAttempt] = await tx
+          .select({ id: settlementAttempts.id })
+          .from(settlementAttempts)
+          .where(eq(settlementAttempts.settlementId, record.settlement.id))
+          .orderBy(sql`${settlementAttempts.attemptNumber} desc`)
+          .limit(1);
+        if (latestAttempt) {
+          await tx
+            .update(settlementAttempts)
+            .set({
+              status: "SUBMITTED",
+              transactionHash: recovered.transactionHash,
+              blockNumber: recovered.blockNumber,
+              submittedAt: recoveredAt,
+              failureReason: null,
+              updatedAt: recoveredAt,
+            })
+            .where(eq(settlementAttempts.id, latestAttempt.id));
+        }
+      });
+      transactionHash = recovered.transactionHash;
+    } else if (await isSessionConsumed(receipt.sessionHash)) {
+      throw new Error("SESSION_CONSUMED_WITHOUT_RECOVERABLE_EVENT");
     }
+  }
+
+  if (!transactionHash && isCompletionReceiptExpired(receipt, new Date())) {
     const failedAt = new Date();
     const markedExpired = await db.transaction(async (tx) => {
       const [failed] = await tx
@@ -231,9 +295,6 @@ export async function settleQuestCompletion(input: { sessionId: string; userId: 
   }
 
   if (!transactionHash && ["SUBMITTING", "FAILED"].includes(record.settlement.status)) {
-    if (await isSessionConsumed(receipt.sessionHash)) {
-      throw new Error("SESSION_CONSUMED_WITHOUT_TRACKED_TRANSACTION");
-    }
     const [reset] = await db
       .update(settlements)
       .set({ status: "AUTHORIZED", failureReason: null, updatedAt: new Date() })
@@ -431,12 +492,14 @@ async function finalizeConfirmedSettlement(settlementId: string, observedBlockNu
       .update(campaigns)
       .set({
         remainingBudget: sql`${campaigns.remainingBudget} - ${record.campaign.creditReward}`,
+        reservedBudget: sql`${campaigns.reservedBudget} - ${record.campaign.creditReward}`,
         updatedAt: confirmedAt,
       })
       .where(
         and(
           eq(campaigns.id, record.campaign.id),
           sql`${campaigns.remainingBudget} >= ${record.campaign.creditReward}`,
+          sql`${campaigns.reservedBudget} >= ${record.campaign.creditReward}`,
         ),
       )
       .returning({ remainingBudget: campaigns.remainingBudget });
@@ -483,6 +546,7 @@ async function finalizeConfirmedSettlement(settlementId: string, observedBlockNu
       .update(questSessions)
       .set({ state: "CREDITED", claimedAt: confirmedAt, updatedAt: confirmedAt })
       .where(eq(questSessions.id, record.session.id));
+    const finalBalance = await getLockedCreditBalance(tx, record.session.userId);
     return {
       settlementId: record.settlement.id,
       transactionHash: record.settlement.transactionHash,
@@ -490,7 +554,7 @@ async function finalizeConfirmedSettlement(settlementId: string, observedBlockNu
       status: "CONFIRMED" as const,
       taskId: record.task.id,
       taskStatus,
-      balanceAfterCredit: balance,
+      balanceAfterCredit: finalBalance,
     };
   });
 }

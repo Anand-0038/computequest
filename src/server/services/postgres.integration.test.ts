@@ -16,9 +16,13 @@ import {
   settlements,
   tasks,
   users,
+  jobs,
+  providerAttempts,
 } from "@/server/db/schema";
+import * as gemini from "@/server/ai/gemini";
 import * as monad from "@/server/chain/monad";
 import { upsertDemoCampaign } from "@/server/services/campaigns";
+import { retryRefundedJob, runPresentationJob } from "@/server/services/jobs";
 import { createQuestSession, recordHeartbeat } from "@/server/services/quests";
 import { authorizeQuestCompletion, settleQuestCompletion } from "@/server/services/settlements";
 import { createPresentationTask, getCreditBalance } from "@/server/services/tasks";
@@ -36,6 +40,7 @@ describe.skipIf(!integrationDatabaseUrl)("PostgreSQL service integration", () =>
       MONAD_CHAIN_ID: "10143",
       MONAD_EXPLORER_BASE_URL: "https://testnet.monadvision.com",
       CAMPAIGN_ESCROW_ADDRESS: `0x${"1".repeat(40)}`,
+      CAMPAIGN_ESCROW_DEPLOYMENT_BLOCK: "57853062",
       VERIFIER_PRIVATE_KEY: `0x${"2".repeat(64)}`,
       RELAYER_PRIVATE_KEY: `0x${"3".repeat(64)}`,
       DEMO_CAMPAIGN_ID: "00000000-0000-4000-8000-000000000002",
@@ -107,6 +112,194 @@ describe.skipIf(!integrationDatabaseUrl)("PostgreSQL service integration", () =>
     expect(await getCreditBalance(userId)).toBe(0);
   });
 
+  it("refunds every failed Gemini attempt exactly once and enforces the retry cap", async () => {
+    const db = getDatabase();
+    const userId = crypto.randomUUID();
+    await db.insert(users).values({ id: userId });
+    await db.insert(creditEntries).values({
+      id: crypto.randomUUID(),
+      userId,
+      amount: TASK_COST,
+      type: "INITIAL_GRANT",
+      referenceId: userId,
+      idempotencyKey: `initial-grant:${userId}`,
+    });
+    const created = await createPresentationTask({
+      userId,
+      prompt: "Create a technical deck whose provider fails twice.",
+    });
+    const [job] = await db.select().from(jobs).where(eq(jobs.taskId, created.task.id));
+    let providerCall = 0;
+    vi.spyOn(gemini, "generatePresentation").mockImplementation(async () => {
+      providerCall += 1;
+      throw new gemini.GeminiAttemptError("GEMINI_REQUEST_FAILED:UNAVAILABLE", {
+        providerRequestId: `failed-provider-request-${providerCall}`,
+        requestedModel: "gemini-3.5-flash-lite",
+        responseModelVersion: "gemini-3.5-flash-lite-001",
+        usage: {
+          promptTokenCount: 100,
+          cachedContentTokenCount: null,
+          candidatesTokenCount: 20,
+          toolUsePromptTokenCount: null,
+          thoughtsTokenCount: null,
+          totalTokenCount: 120,
+          serviceTier: "STANDARD",
+        },
+      });
+    });
+
+    await expect(runPresentationJob({ taskId: created.task.id, userId })).rejects.toThrow(
+      "JOB_FAILED_AND_REFUNDED",
+    );
+    expect(await getCreditBalance(userId)).toBe(TASK_COST);
+
+    await retryRefundedJob({ jobId: job.id, userId });
+    expect(await getCreditBalance(userId)).toBe(0);
+    await expect(runPresentationJob({ taskId: created.task.id, userId })).rejects.toThrow(
+      "JOB_FAILED_AND_REFUNDED",
+    );
+    expect(await getCreditBalance(userId)).toBe(TASK_COST);
+
+    await retryRefundedJob({ jobId: job.id, userId });
+    expect(await getCreditBalance(userId)).toBe(0);
+    await expect(runPresentationJob({ taskId: created.task.id, userId })).rejects.toThrow(
+      "JOB_FAILED_AND_REFUNDED",
+    );
+    expect(await getCreditBalance(userId)).toBe(TASK_COST);
+    await expect(retryRefundedJob({ jobId: job.id, userId })).rejects.toThrow("JOB_RETRY_LIMIT_REACHED");
+
+    const refunds = await db
+      .select()
+      .from(creditEntries)
+      .where(eq(creditEntries.type, "JOB_REFUND"));
+    expect(refunds).toHaveLength(3);
+    expect(refunds.map((entry) => entry.idempotencyKey).sort()).toEqual([
+      `job-refund:${job.id}:1`,
+      `job-refund:${job.id}:2`,
+      `job-refund:${job.id}:3`,
+    ]);
+    const attempts = await db.select().from(providerAttempts).where(eq(providerAttempts.jobId, job.id));
+    expect(attempts).toHaveLength(3);
+    expect(
+      attempts.every(
+        (attempt) =>
+          attempt.status === "FAILED" &&
+          !attempt.canonical &&
+          attempt.pricingStatus === "PRICED" &&
+          attempt.publishedCostUsdMicros === BigInt(80),
+      ),
+    ).toBe(true);
+  });
+
+  it("records Gemini usage and published replacement cost separately from CE", async () => {
+    const db = getDatabase();
+    const userId = crypto.randomUUID();
+    await db.insert(users).values({ id: userId });
+    await db.insert(creditEntries).values({
+      id: crypto.randomUUID(),
+      userId,
+      amount: TASK_COST,
+      type: "INITIAL_GRANT",
+      referenceId: userId,
+      idempotencyKey: `initial-grant:${userId}`,
+    });
+    const created = await createPresentationTask({ userId, prompt: "Create a metered technical deck." });
+    const presentation = {
+      title: "Metered compute",
+      subtitle: "Provider usage stays separate from CE",
+      theme: "technical",
+      slides: Array.from({ length: 6 }, (_, index) => ({
+        title: `Slide ${index + 1}`,
+        bullets: ["A concrete point"],
+        speakerNote: "Explain the evidence.",
+        visualDirection: "Show one proof object.",
+      })),
+    };
+    vi.spyOn(gemini, "generatePresentation").mockResolvedValue({
+      presentation,
+      providerRequestId: "provider-request-metered",
+      requestedModel: "gemini-3.5-flash-lite",
+      responseModelVersion: "gemini-3.5-flash-lite-001",
+      usage: {
+        promptTokenCount: 1_000,
+        cachedContentTokenCount: null,
+        candidatesTokenCount: 1_500,
+        toolUsePromptTokenCount: null,
+        thoughtsTokenCount: 500,
+        totalTokenCount: 3_000,
+        serviceTier: "STANDARD",
+      },
+    });
+
+    const result = await runPresentationJob({ taskId: created.task.id, userId });
+    expect(result.job.status).toBe("COMPLETED");
+    const [attempt] = await db.select().from(providerAttempts).where(eq(providerAttempts.jobId, result.job.id));
+    expect(attempt).toMatchObject({
+      status: "SUCCEEDED",
+      canonical: true,
+      providerRequestId: "provider-request-metered",
+      responseModelVersion: "gemini-3.5-flash-lite-001",
+      pricingStatus: "PRICED",
+      publishedCostUsdMicros: BigInt(5_300),
+      actualBilledCostUsdMicros: null,
+    });
+    expect(await getCreditBalance(userId)).toBe(0);
+  });
+
+  it("does not reclaim a stale provider lease after the attempt cap", async () => {
+    const db = getDatabase();
+    const userId = crypto.randomUUID();
+    await db.insert(users).values({ id: userId });
+    await db.insert(creditEntries).values({
+      id: crypto.randomUUID(),
+      userId,
+      amount: TASK_COST,
+      type: "INITIAL_GRANT",
+      referenceId: userId,
+      idempotencyKey: `initial-grant:${userId}`,
+    });
+    const created = await createPresentationTask({ userId, prompt: "Create a capped stale-lease deck." });
+    const [job] = await db
+      .update(jobs)
+      .set({
+        status: "PROCESSING",
+        attemptCount: 3,
+        processingStartedAt: new Date(Date.now() - 6 * 60_000),
+        processingToken: crypto.randomUUID(),
+      })
+      .where(eq(jobs.taskId, created.task.id))
+      .returning();
+    await db.insert(providerAttempts).values({
+      id: crypto.randomUUID(),
+      jobId: job.id,
+      attemptNumber: 3,
+      status: "STARTED",
+      provider: "gemini",
+      requestedModel: "gemini-3.5-flash-lite",
+      startedAt: new Date(Date.now() - 6 * 60_000),
+    });
+    const provider = vi.spyOn(gemini, "generatePresentation");
+
+    await expect(runPresentationJob({ taskId: created.task.id, userId })).rejects.toThrow(
+      "JOB_ATTEMPT_LIMIT_REACHED_CREDITS_REFUNDED",
+    );
+    expect(provider).not.toHaveBeenCalled();
+    const [reconciledJob] = await db.select().from(jobs).where(eq(jobs.id, job.id));
+    expect(reconciledJob).toMatchObject({
+      status: "FAILED",
+      failureReason: "PROVIDER_ATTEMPT_TIMED_OUT_AT_CAP",
+      processingStartedAt: null,
+      processingToken: null,
+    });
+    const [attempt] = await db.select().from(providerAttempts).where(eq(providerAttempts.jobId, job.id));
+    expect(attempt).toMatchObject({
+      status: "FAILED",
+      pricingStatus: "UNPRICED",
+      pricingReason: "USAGE_METADATA_UNAVAILABLE_AFTER_PROCESS_LOSS",
+    });
+    expect(await getCreditBalance(userId)).toBe(TASK_COST);
+  });
+
   it("allows one campaign reward per user while preserving the original quest authorization", async () => {
     const db = getDatabase();
     const userId = crypto.randomUUID();
@@ -160,6 +353,55 @@ describe.skipIf(!integrationDatabaseUrl)("PostgreSQL service integration", () =>
       settlementId: firstAuthorization.id,
       status: "RESERVED",
     });
+    const [reservedCampaign] = await db.select().from(campaigns).where(eq(campaigns.id, campaignId));
+    expect(reservedCampaign).toMatchObject({
+      remainingBudget: QUEST_REWARD * 2,
+      reservedBudget: QUEST_REWARD,
+    });
+  });
+
+  it("never signs more CE receipts than the campaign can fund", async () => {
+    const db = getDatabase();
+    const campaignId = crypto.randomUUID();
+    const answer = "parallel execution";
+    const firstUserId = crypto.randomUUID();
+    const secondUserId = crypto.randomUUID();
+    await db.insert(users).values([{ id: firstUserId }, { id: secondUserId }]);
+    await db.insert(campaigns).values({
+      id: campaignId,
+      onchainCampaignId: BigInt(1),
+      creditReward: QUEST_REWARD,
+      onchainRewardWei: BigInt(1),
+      requiredActiveSeconds: 30,
+      creativeTitle: "Monad parallel execution",
+      completionQuestion: "What model runs independent work concurrently?",
+      completionAnswerHash: keccak256(stringToHex(answer)),
+      remainingBudget: QUEST_REWARD,
+      active: true,
+    });
+    const [firstTask, secondTask] = await Promise.all([
+      createPresentationTask({ userId: firstUserId, prompt: "Create the first budget-bound deck." }),
+      createPresentationTask({ userId: secondUserId, prompt: "Create the second budget-bound deck." }),
+    ]);
+    const [firstQuest, secondQuest] = await Promise.all([
+      createQuestSession({ campaignId, taskId: firstTask.task.id, userId: firstUserId }),
+      createQuestSession({ campaignId, taskId: secondTask.task.id, userId: secondUserId }),
+    ]);
+    await db
+      .update(questSessions)
+      .set({ state: "ACTIVE", accumulatedActiveMs: 30_000 })
+      .where(eq(questSessions.campaignId, campaignId));
+    const signTypedData = vi.fn().mockResolvedValue(`0x${"4".repeat(130)}`);
+    vi.spyOn(monad, "assertOnchainVerifier").mockResolvedValue({ signTypedData } as never);
+
+    await authorizeQuestCompletion({ sessionId: firstQuest.session.id, userId: firstUserId, answer });
+    await expect(
+      authorizeQuestCompletion({ sessionId: secondQuest.session.id, userId: secondUserId, answer }),
+    ).rejects.toThrow("OFFCHAIN_CAMPAIGN_BUDGET_UNAVAILABLE");
+    expect(signTypedData).toHaveBeenCalledOnce();
+    const [campaign] = await db.select().from(campaigns).where(eq(campaigns.id, campaignId));
+    expect(campaign).toMatchObject({ remainingBudget: QUEST_REWARD, reservedBudget: QUEST_REWARD });
+    expect(await db.select().from(campaignRewardClaims)).toHaveLength(1);
   });
 
   it("serializes settlement crediting against concurrent task creation", async () => {
@@ -185,6 +427,7 @@ describe.skipIf(!integrationDatabaseUrl)("PostgreSQL service integration", () =>
       completionQuestion: "What model runs independent work concurrently?",
       completionAnswerHash: "not-used-in-this-test",
       remainingBudget: QUEST_REWARD,
+      reservedBudget: QUEST_REWARD,
       active: true,
     });
     const fundedByQuest = await createPresentationTask({
@@ -216,17 +459,18 @@ describe.skipIf(!integrationDatabaseUrl)("PostgreSQL service integration", () =>
     });
     await db.update(questSessions).set({ state: "SETTLED" }).where(eq(questSessions.id, quest.session.id));
 
-    await Promise.all([
+    const [settled] = await Promise.all([
       settleQuestCompletion({ sessionId: quest.session.id, userId }),
       createPresentationTask({ userId, prompt: "Create a task racing the confirmed settlement." }),
     ]);
 
+    expect(settled.balanceAfterCredit).toBe(0);
     const userTasks = await db.select().from(tasks).where(eq(tasks.userId, userId));
     expect(userTasks.map((task) => task.status).sort()).toEqual(["AWAITING_CREDITS", "FUNDED"]);
     expect(await getCreditBalance(userId)).toBe(0);
   });
 
-  it("preserves consumed campaign budget across restarts and resets only for a new onchain campaign", async () => {
+  it("preserves campaign identity and requires a new UUID for a new onchain campaign", async () => {
     const db = getDatabase();
     const campaignId = crypto.randomUUID();
     const metadata = {
@@ -241,14 +485,56 @@ describe.skipIf(!integrationDatabaseUrl)("PostgreSQL service integration", () =>
       fullBudget: 400,
     };
     await upsertDemoCampaign(metadata);
-    await db.update(campaigns).set({ remainingBudget: 260 }).where(eq(campaigns.id, campaignId));
+    await db
+      .update(campaigns)
+      .set({ remainingBudget: 260, reservedBudget: 40 })
+      .where(eq(campaigns.id, campaignId));
 
     const restarted = await upsertDemoCampaign(metadata);
     expect(restarted.remainingBudget).toBe(260);
+    expect(restarted.reservedBudget).toBe(40);
 
-    const rolledOver = await upsertDemoCampaign({ ...metadata, onchainCampaignId: BigInt(2) });
-    expect(rolledOver.remainingBudget).toBe(400);
-    expect(rolledOver.onchainCampaignId).toBe(BigInt(2));
+    await expect(upsertDemoCampaign({ ...metadata, onchainCampaignId: BigInt(2) })).rejects.toThrow(
+      "CAMPAIGN_IDENTITY_IMMUTABLE_USE_NEW_UUID",
+    );
+    const [preserved] = await db.select().from(campaigns).where(eq(campaigns.id, campaignId));
+    expect(preserved).toMatchObject({
+      onchainCampaignId: BigInt(1),
+      remainingBudget: 260,
+      reservedBudget: 40,
+    });
+    await expect(upsertDemoCampaign({ ...metadata, creditReward: QUEST_REWARD + 1 })).rejects.toThrow(
+      "CAMPAIGN_IDENTITY_IMMUTABLE_USE_NEW_UUID",
+    );
+    const [economicsPreserved] = await db.select().from(campaigns).where(eq(campaigns.id, campaignId));
+    expect(economicsPreserved).toMatchObject({
+      creditReward: QUEST_REWARD,
+      remainingBudget: 260,
+      reservedBudget: 40,
+    });
+    await expect(
+      upsertDemoCampaign({ ...metadata, completionQuestion: "A different completion question?" }),
+    ).rejects.toThrow("CAMPAIGN_IDENTITY_IMMUTABLE_USE_NEW_UUID");
+    const [verificationPreserved] = await db.select().from(campaigns).where(eq(campaigns.id, campaignId));
+    expect(verificationPreserved).toMatchObject({
+      completionQuestion: metadata.completionQuestion,
+      completionAnswerHash: metadata.completionAnswerHash,
+      remainingBudget: 260,
+      reservedBudget: 40,
+    });
+
+    const nextCampaignId = crypto.randomUUID();
+    const next = await upsertDemoCampaign({
+      ...metadata,
+      id: nextCampaignId,
+      onchainCampaignId: BigInt(2),
+    });
+    expect(next).toMatchObject({
+      id: nextCampaignId,
+      onchainCampaignId: BigInt(2),
+      remainingBudget: 400,
+      reservedBudget: 0,
+    });
   });
 
   it("persists a pause boundary and credits only the following continuous eligible interval", async () => {
@@ -530,6 +816,7 @@ describe.skipIf(!integrationDatabaseUrl)("PostgreSQL service integration", () =>
       completionQuestion: "What model runs independent work concurrently?",
       completionAnswerHash: "not-used-in-this-test",
       remainingBudget: QUEST_REWARD * 2,
+      reservedBudget: QUEST_REWARD,
       active: true,
     });
     const task = await createPresentationTask({ userId, prompt: "Create a pitch deck for ComputeQuest." });
@@ -588,6 +875,7 @@ describe.skipIf(!integrationDatabaseUrl)("PostgreSQL service integration", () =>
       .mockResolvedValueOnce(false)
       .mockResolvedValueOnce(false)
       .mockResolvedValueOnce(true);
+    vi.spyOn(monad, "findSettlementBySessionHash").mockResolvedValue(null);
     vi.spyOn(monad, "simulateCompletionSettlement").mockResolvedValue(undefined);
     vi.spyOn(monad, "submitCompletionSettlement").mockResolvedValue(confirmedHash);
 
@@ -603,5 +891,90 @@ describe.skipIf(!integrationDatabaseUrl)("PostgreSQL service integration", () =>
     expect(attempts[1]).toMatchObject({ attemptNumber: 2, status: "CONFIRMED", transactionHash: confirmedHash });
     const [fundedTask] = await db.select().from(tasks).where(eq(tasks.id, task.task.id));
     expect(fundedTask.status).toBe("FUNDED");
+  });
+
+  it("recovers a broadcast settlement from its indexed onchain event", async () => {
+    const db = getDatabase();
+    const userId = crypto.randomUUID();
+    const campaignId = crypto.randomUUID();
+    await db.insert(users).values({ id: userId });
+    await db.insert(creditEntries).values({
+      id: crypto.randomUUID(),
+      userId,
+      amount: INITIAL_DEMO_BALANCE,
+      type: "INITIAL_GRANT",
+      referenceId: userId,
+      idempotencyKey: `initial-grant:${userId}`,
+    });
+    await db.insert(campaigns).values({
+      id: campaignId,
+      onchainCampaignId: BigInt(1),
+      creditReward: QUEST_REWARD,
+      onchainRewardWei: BigInt(1),
+      requiredActiveSeconds: 30,
+      creativeTitle: "Monad parallel execution",
+      completionQuestion: "What model runs independent work concurrently?",
+      completionAnswerHash: "not-used-in-this-test",
+      remainingBudget: QUEST_REWARD,
+      reservedBudget: QUEST_REWARD,
+      active: true,
+    });
+    const task = await createPresentationTask({ userId, prompt: "Create a crash-recovery deck." });
+    const quest = await createQuestSession({ campaignId, taskId: task.task.id, userId });
+    const receipt = buildCompletionReceipt({
+      campaignId: BigInt(1),
+      sessionId: quest.session.id,
+      sessionNonce: quest.session.nonce,
+      userId,
+      reward: BigInt(1),
+      issuedAtSeconds: BigInt(Math.floor(Date.now() / 1_000)),
+    });
+    const settlementId = crypto.randomUUID();
+    const recoveredHash = `0x${"8".repeat(64)}` as `0x${string}`;
+    await db.insert(settlements).values({
+      id: settlementId,
+      questSessionId: quest.session.id,
+      sessionHash: receipt.sessionHash,
+      receipt: storeCompletionReceipt(receipt),
+      signature: `0x${"1".repeat(130)}`,
+      chainId: 10143,
+      status: "SUBMITTING",
+      authorizedAt: new Date(),
+      updatedAt: new Date(Date.now() - 31_000),
+    });
+    await db.insert(settlementAttempts).values({
+      id: crypto.randomUUID(),
+      settlementId,
+      attemptNumber: 1,
+      status: "SUBMITTING",
+    });
+    await db.update(questSessions).set({ state: "SETTLING" }).where(eq(questSessions.id, quest.session.id));
+    vi.spyOn(monad, "findSettlementBySessionHash").mockResolvedValue({
+      transactionHash: recoveredHash,
+      blockNumber: BigInt(222),
+    });
+    vi.spyOn(monad, "waitForSettlement").mockResolvedValue({
+      status: "success",
+      blockNumber: BigInt(222),
+    } as never);
+    vi.spyOn(monad, "isSessionConsumed").mockResolvedValue(true);
+
+    const recovered = await settleQuestCompletion({ sessionId: quest.session.id, userId });
+    expect(recovered).toMatchObject({
+      status: "CONFIRMED",
+      transactionHash: recoveredHash,
+      blockNumber: BigInt(222),
+      taskStatus: "FUNDED",
+      balanceAfterCredit: 0,
+    });
+    const [attempt] = await db
+      .select()
+      .from(settlementAttempts)
+      .where(eq(settlementAttempts.settlementId, settlementId));
+    expect(attempt).toMatchObject({
+      status: "CONFIRMED",
+      transactionHash: recoveredHash,
+      blockNumber: BigInt(222),
+    });
   });
 });

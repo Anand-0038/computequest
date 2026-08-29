@@ -20,7 +20,12 @@ export async function POST(_request: Request, context: { params: Promise<{ taskI
     );
   } catch (error) {
     const message = error instanceof Error ? error.message : "JOB_RUN_FAILED";
-    const status = message === "TASK_NOT_FOUND" ? 404 : message.includes("PROCESSING") ? 409 : 400;
+    const status =
+      message === "TASK_NOT_FOUND"
+        ? 404
+        : message.includes("PROCESSING") || message === "JOB_ATTEMPT_LIMIT_REACHED"
+          ? 409
+          : 400;
     return NextResponse.json({ error: message }, { status });
   }
 }

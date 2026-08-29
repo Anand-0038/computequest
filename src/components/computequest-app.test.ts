@@ -9,6 +9,7 @@ describe("ComputeQuest persisted stage rail", () => {
     [{ task: { id: "task", status: "AWAITING_CREDITS" }, quest: { state: "ACTIVE" } }, false, 2],
     [{ task: { id: "task", status: "AWAITING_CREDITS" }, settlement: { status: "SUBMITTED" } }, false, 3],
     [{ task: { id: "task", status: "PROCESSING" }, job: { id: "job", status: "PROCESSING" } }, false, 4],
+    [{ task: { id: "task", status: "FAILED" }, job: { id: "job", status: "FAILED" } }, false, 4],
     [{ task: { id: "task", status: "COMPLETED" }, job: { id: "job", status: "COMPLETED" } }, false, 5],
   ])("maps persisted state to stage %#", (task, result, expected) => {
     expect(deriveActiveStage({ task, result })).toBe(expected);
@@ -56,5 +57,22 @@ describe("ComputeQuest compute cell", () => {
         balance: 24,
       },
     })).toMatchObject({ balance: 24, label: "CREDITS REFUNDED" });
+  });
+
+  it("labels a capped stale-attempt refund as terminal", () => {
+    expect(deriveComputeCell({
+      activeStage: 4,
+      sessionBalance: 0,
+      sessionReady: true,
+      task: {
+        task: { id: "task", status: "FAILED" },
+        job: { id: "job", status: "FAILED" },
+        balance: 24,
+      },
+    })).toMatchObject({
+      balance: 24,
+      label: "CREDITS REFUNDED",
+      detail: expect.stringContaining("start a new task"),
+    });
   });
 });

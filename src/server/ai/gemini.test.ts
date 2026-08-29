@@ -11,6 +11,7 @@ const runtime = {
   MONAD_CHAIN_ID: "10143",
   MONAD_EXPLORER_BASE_URL: "https://testnet.monadvision.com",
   CAMPAIGN_ESCROW_ADDRESS: `0x${"1".repeat(40)}`,
+  CAMPAIGN_ESCROW_DEPLOYMENT_BLOCK: "57853062",
   VERIFIER_PRIVATE_KEY: `0x${"2".repeat(64)}`,
   RELAYER_PRIVATE_KEY: `0x${"3".repeat(64)}`,
   DEMO_CAMPAIGN_ID: "00000000-0000-4000-8000-000000000002",
@@ -48,7 +49,18 @@ describe("Gemini presentation provider", () => {
       "fetch",
       vi.fn().mockResolvedValue(
         new Response(
-          JSON.stringify({ responseId: "provider-request-1", candidates: [{ content: { parts: [{ text: JSON.stringify(presentation) }] } }] }),
+          JSON.stringify({
+            responseId: "provider-request-1",
+            modelVersion: "gemini-3.5-flash-lite-001",
+            usageMetadata: {
+              promptTokenCount: 100,
+              candidatesTokenCount: 200,
+              thoughtsTokenCount: 25,
+              totalTokenCount: 325,
+              serviceTier: "STANDARD",
+            },
+            candidates: [{ content: { parts: [{ text: JSON.stringify(presentation) }] } }],
+          }),
           { status: 200 },
         ),
       ),
@@ -57,14 +69,89 @@ describe("Gemini presentation provider", () => {
     await expect(generatePresentation("Create a technical deck for ComputeQuest.")).resolves.toEqual({
       presentation,
       providerRequestId: "provider-request-1",
+      requestedModel: "gemini-3.5-flash-lite",
+      responseModelVersion: "gemini-3.5-flash-lite-001",
+      usage: {
+        promptTokenCount: 100,
+        cachedContentTokenCount: null,
+        candidatesTokenCount: 200,
+        toolUsePromptTokenCount: null,
+        thoughtsTokenCount: 25,
+        totalTokenCount: 325,
+        serviceTier: "STANDARD",
+      },
     });
   });
 
-  it("fails closed when Gemini omits structured output", async () => {
+  it("preserves metering metadata when Gemini omits structured output", async () => {
     configureRuntime();
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify({ candidates: [] }), { status: 200 })));
-    await expect(generatePresentation("Create a technical deck for ComputeQuest.")).rejects.toThrow(
-      "GEMINI_STRUCTURED_OUTPUT_MISSING",
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            responseId: "provider-missing-output",
+            usageMetadata: { promptTokenCount: 50, candidatesTokenCount: 5, serviceTier: "STANDARD" },
+            candidates: [],
+          }),
+          { status: 200 },
+        ),
+      ),
     );
+    await expect(generatePresentation("Create a technical deck for ComputeQuest.")).rejects.toMatchObject({
+      message: "GEMINI_STRUCTURED_OUTPUT_MISSING",
+      metadata: {
+        providerRequestId: "provider-missing-output",
+        usage: { promptTokenCount: 50, candidatesTokenCount: 5, serviceTier: "STANDARD" },
+      },
+    });
+  });
+
+  it("preserves available usage on a provider HTTP failure", async () => {
+    configureRuntime();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            responseId: "provider-rate-limited",
+            usageMetadata: { promptTokenCount: 25, candidatesTokenCount: 0, serviceTier: "STANDARD" },
+            error: { status: "RESOURCE_EXHAUSTED" },
+          }),
+          { status: 429 },
+        ),
+      ),
+    );
+    await expect(generatePresentation("Create a technical deck for ComputeQuest.")).rejects.toMatchObject({
+      message: "GEMINI_REQUEST_FAILED:RESOURCE_EXHAUSTED",
+      metadata: {
+        providerRequestId: "provider-rate-limited",
+        usage: { promptTokenCount: 25, candidatesTokenCount: 0 },
+      },
+    });
+  });
+
+  it("preserves available usage when structured output fails schema validation", async () => {
+    configureRuntime();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            responseId: "provider-invalid-output",
+            usageMetadata: { promptTokenCount: 40, candidatesTokenCount: 10, serviceTier: "STANDARD" },
+            candidates: [{ content: { parts: [{ text: JSON.stringify({ title: "Incomplete" }) }] } }],
+          }),
+          { status: 200 },
+        ),
+      ),
+    );
+    await expect(generatePresentation("Create a technical deck for ComputeQuest.")).rejects.toMatchObject({
+      message: "GEMINI_STRUCTURED_OUTPUT_INVALID",
+      metadata: {
+        providerRequestId: "provider-invalid-output",
+        usage: { promptTokenCount: 40, candidatesTokenCount: 10 },
+      },
+    });
   });
 });

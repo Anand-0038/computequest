@@ -14,6 +14,7 @@
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
     "db:seed": "tsx scripts/seed.ts",
+    "operator:provider-cost-report": "tsx scripts/provider-cost-report.ts",
     "media:generate:sponsor": "bash scripts/generate-sponsor-creative.sh",
     "media:studio:sponsor": "remotion studio video/index.ts --no-open",
     "media:still:sponsor": "remotion still video/index.ts MonadPromo",

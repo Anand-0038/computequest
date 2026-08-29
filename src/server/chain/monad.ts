@@ -18,6 +18,17 @@ const GAS_LIMIT_BUFFER_DENOMINATOR = BigInt(10);
 
 export const campaignEscrowAbi = [
   {
+    type: "event",
+    name: "CompletionSettled",
+    inputs: [
+      { name: "campaignId", type: "uint256", indexed: true },
+      { name: "sessionHash", type: "bytes32", indexed: true },
+      { name: "viewerIdHash", type: "bytes32", indexed: true },
+      { name: "amount", type: "uint256", indexed: false },
+      { name: "payoutRecipient", type: "address", indexed: false },
+    ],
+  },
+  {
     type: "function",
     name: "verifier",
     stateMutability: "view",
@@ -293,7 +304,21 @@ export async function assertOnchainVerifier() {
   return verifier;
 }
 
-export async function submitCompletionSettlement(receipt: CompletionReceipt, signature: Hex) {
+let relayerSubmissionQueue: Promise<void> = Promise.resolve();
+
+export function submitCompletionSettlement(receipt: CompletionReceipt, signature: Hex) {
+  const submission = relayerSubmissionQueue.then(
+    () => submitCompletionSettlementNow(receipt, signature),
+    () => submitCompletionSettlementNow(receipt, signature),
+  );
+  relayerSubmissionQueue = submission.then(
+    () => undefined,
+    () => undefined,
+  );
+  return submission;
+}
+
+async function submitCompletionSettlementNow(receipt: CompletionReceipt, signature: Hex) {
   const { env, publicClient, relayer, walletClient } = getMonadClients();
   const address = env.CAMPAIGN_ESCROW_ADDRESS as Address;
   const { request } = await publicClient.simulateContract({
@@ -362,4 +387,43 @@ export async function isSessionConsumed(sessionHash: Hex) {
     functionName: "consumedSessionHash",
     args: [sessionHash],
   });
+}
+
+export async function findSettlementBySessionHash(sessionHash: Hex) {
+  const { env, publicClient } = getMonadClients();
+  const latestBlock = await publicClient.getBlockNumber();
+  for (const { fromBlock, toBlock } of settlementRecoveryBlockRanges(
+    latestBlock,
+    env.CAMPAIGN_ESCROW_DEPLOYMENT_BLOCK,
+  )) {
+    const logs = await publicClient.getLogs({
+      address: env.CAMPAIGN_ESCROW_ADDRESS as Address,
+      event: campaignEscrowAbi[0],
+      args: { sessionHash },
+      fromBlock,
+      toBlock,
+    });
+    const recovered = logs.at(-1);
+    if (recovered?.transactionHash && recovered.blockNumber !== null) {
+      return { transactionHash: recovered.transactionHash, blockNumber: recovered.blockNumber };
+    }
+  }
+  return null;
+}
+
+export function* settlementRecoveryBlockRanges(
+  latestBlock: bigint,
+  deploymentBlock: bigint,
+  chunkSize = BigInt(50_000),
+) {
+  if (chunkSize <= BigInt(0)) throw new Error("MONAD_RECOVERY_CHUNK_INVALID");
+  if (deploymentBlock > latestBlock) throw new Error("MONAD_DEPLOYMENT_BLOCK_IN_FUTURE");
+  let toBlock = latestBlock;
+  while (toBlock >= deploymentBlock) {
+    const candidateFrom = toBlock >= chunkSize ? toBlock - chunkSize + BigInt(1) : BigInt(0);
+    const fromBlock = candidateFrom > deploymentBlock ? candidateFrom : deploymentBlock;
+    yield { fromBlock, toBlock };
+    if (fromBlock === deploymentBlock) break;
+    toBlock = fromBlock - BigInt(1);
+  }
 }

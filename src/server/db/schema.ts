@@ -72,6 +72,12 @@ export const jobStatus = pgEnum("job_status", [
   "REFUNDED",
 ]);
 
+export const providerAttemptStatus = pgEnum("provider_attempt_status", [
+  "STARTED",
+  "SUCCEEDED",
+  "FAILED",
+]);
+
 const timestamps = {
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
@@ -109,6 +115,7 @@ export const campaigns = pgTable("campaigns", {
   completionQuestion: text("completion_question").notNull(),
   completionAnswerHash: text("completion_answer_hash").notNull(),
   remainingBudget: integer("remaining_budget").notNull(),
+  reservedBudget: integer("reserved_budget").notNull().default(0),
   active: boolean("active").notNull().default(true),
   ...timestamps,
 });
@@ -264,4 +271,54 @@ export const jobs = pgTable(
     ...timestamps,
   },
   (table) => [uniqueIndex("job_task_unique").on(table.taskId)],
+);
+
+export const providerPricingSnapshots = pgTable("provider_pricing_snapshots", {
+  id: text("id").primaryKey(),
+  provider: text("provider").notNull(),
+  requestedModel: text("requested_model").notNull(),
+  serviceTier: text("service_tier").notNull(),
+  currency: text("currency").notNull(),
+  inputMicrosPerMillionTokens: bigint("input_micros_per_million_tokens", { mode: "bigint" }).notNull(),
+  outputMicrosPerMillionTokens: bigint("output_micros_per_million_tokens", { mode: "bigint" }).notNull(),
+  sourceUrl: text("source_url").notNull(),
+  effectiveAt: timestamp("effective_at", { withTimezone: true }).notNull(),
+  retrievedAt: timestamp("retrieved_at", { withTimezone: true }).notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
+export const providerAttempts = pgTable(
+  "provider_attempts",
+  {
+    id: uuid("id").primaryKey(),
+    jobId: uuid("job_id").notNull().references(() => jobs.id),
+    attemptNumber: integer("attempt_number").notNull(),
+    status: providerAttemptStatus("status").notNull().default("STARTED"),
+    provider: text("provider").notNull(),
+    requestedModel: text("requested_model").notNull(),
+    responseModelVersion: text("response_model_version"),
+    serviceTier: text("service_tier"),
+    providerRequestId: text("provider_request_id"),
+    promptTokenCount: integer("prompt_token_count"),
+    cachedContentTokenCount: integer("cached_content_token_count"),
+    candidatesTokenCount: integer("candidates_token_count"),
+    toolUsePromptTokenCount: integer("tool_use_prompt_token_count"),
+    thoughtsTokenCount: integer("thoughts_token_count"),
+    totalTokenCount: integer("total_token_count"),
+    pricingSnapshotId: text("pricing_snapshot_id").references(() => providerPricingSnapshots.id),
+    pricingStatus: text("pricing_status"),
+    pricingReason: text("pricing_reason"),
+    publishedCostUsdMicros: bigint("published_cost_usd_micros", { mode: "bigint" }),
+    actualBilledCostUsdMicros: bigint("actual_billed_cost_usd_micros", { mode: "bigint" }),
+    canonical: boolean("canonical").notNull().default(false),
+    failureReason: text("failure_reason"),
+    startedAt: timestamp("started_at", { withTimezone: true }).notNull(),
+    completedAt: timestamp("completed_at", { withTimezone: true }),
+    ...timestamps,
+  },
+  (table) => [
+    uniqueIndex("provider_attempt_job_number_unique").on(table.jobId, table.attemptNumber),
+    uniqueIndex("provider_attempt_request_unique").on(table.providerRequestId),
+    index("provider_attempt_job_idx").on(table.jobId),
+  ],
 );

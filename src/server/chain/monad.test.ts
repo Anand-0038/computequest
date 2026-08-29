@@ -4,6 +4,7 @@ import {
   calculateMonadGasLimit,
   evaluateMonadPreflight,
   missingEscrowPreflightReport,
+  settlementRecoveryBlockRanges,
 } from "@/server/chain/monad";
 
 const verifier = "0x1111111111111111111111111111111111111111";
@@ -99,6 +100,26 @@ describe("Monad settlement gas limits", () => {
     expect(calculateMonadGasLimit(BigInt(27_272_727))).toBe(BigInt(30_000_000));
     expect(() => calculateMonadGasLimit(BigInt(27_272_728))).toThrow(
       "MONAD_TRANSACTION_GAS_LIMIT_EXCEEDED",
+    );
+  });
+});
+
+describe("Monad settlement event recovery ranges", () => {
+  it("paginates all the way back to the escrow deployment block", () => {
+    expect([...settlementRecoveryBlockRanges(BigInt(250_000), BigInt(100_000), BigInt(50_000))]).toEqual([
+      { fromBlock: BigInt(200_001), toBlock: BigInt(250_000) },
+      { fromBlock: BigInt(150_001), toBlock: BigInt(200_000) },
+      { fromBlock: BigInt(100_001), toBlock: BigInt(150_000) },
+      { fromBlock: BigInt(100_000), toBlock: BigInt(100_000) },
+    ]);
+  });
+
+  it("rejects invalid recovery bounds", () => {
+    expect(() => [...settlementRecoveryBlockRanges(BigInt(10), BigInt(11))]).toThrow(
+      "MONAD_DEPLOYMENT_BLOCK_IN_FUTURE",
+    );
+    expect(() => [...settlementRecoveryBlockRanges(BigInt(10), BigInt(0), BigInt(0))]).toThrow(
+      "MONAD_RECOVERY_CHUNK_INVALID",
     );
   });
 });

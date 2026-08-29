@@ -412,7 +412,11 @@ export function ComputeQuestApp() {
 
 export function deriveActiveStage(input: { result: boolean; task: TaskResponse | null }) {
   if (input.result || input.task?.job?.status === "COMPLETED") return 5;
-  if (input.task?.task?.status === "PROCESSING" || ["FUNDED", "PROCESSING", "REFUNDED"].includes(input.task?.job?.status ?? "")) return 4;
+  if (
+    input.task?.task?.status === "PROCESSING" ||
+    ["FUNDED", "PROCESSING", "REFUNDED", "FAILED"].includes(input.task?.job?.status ?? "")
+  )
+    return 4;
   if (
     ["AUTHORIZED", "SUBMITTING", "SUBMITTED", "CONFIRMED"].includes(input.task?.settlement?.status ?? "") ||
     ["AUTHORIZED", "SETTLING", "SETTLED", "CREDITED", "SETTLEMENT_FAILED"].includes(input.task?.quest?.state ?? "")
@@ -441,6 +445,13 @@ export function deriveComputeCell(input: {
       balance,
       label: "CREDITS REFUNDED",
       detail: "The failed provider spend was returned to the ledger and the persisted job can be retried.",
+    };
+  }
+  if (input.task?.job?.status === "FAILED") {
+    return {
+      balance,
+      label: "CREDITS REFUNDED",
+      detail: "The final provider attempt could not be recovered. Its CE spend was returned; start a new task.",
     };
   }
   if (input.activeStage >= 5) {

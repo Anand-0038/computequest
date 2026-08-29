@@ -19,6 +19,7 @@ const completeRuntime = {
   MONAD_CHAIN_ID: "10143",
   MONAD_EXPLORER_BASE_URL: "https://testnet.monadvision.com",
   CAMPAIGN_ESCROW_ADDRESS: `0x${"1".repeat(40)}`,
+  CAMPAIGN_ESCROW_DEPLOYMENT_BLOCK: "57853062",
   VERIFIER_PRIVATE_KEY: `0x${"2".repeat(64)}`,
   RELAYER_PRIVATE_KEY: `0x${"3".repeat(64)}`,
   RELAYER_MIN_BALANCE_WEI: "100",

@@ -18,7 +18,12 @@ export async function POST(_request: Request, context: { params: Promise<{ jobId
     return NextResponse.json({ ...result, task: publicTask(result.task), job: publicJob(result.job) });
   } catch (error) {
     const message = error instanceof Error ? error.message : "JOB_RETRY_FAILED";
-    const status = message === "JOB_NOT_FOUND" ? 404 : message.includes("NOT_RETRYABLE") ? 409 : 400;
+    const status =
+      message === "JOB_NOT_FOUND"
+        ? 404
+        : message.includes("NOT_RETRYABLE") || message === "JOB_RETRY_LIMIT_REACHED"
+          ? 409
+          : 400;
     return NextResponse.json({ error: message }, { status });
   }
 }

@@ -12,7 +12,7 @@
     "test:integration:postgres": "vitest run src/server/services/postgres.integration.test.ts",
     "test:watch": "vitest",
     "db:generate": "drizzle-kit generate",
-    "db:migrate": "drizzle-kit migrate",
+    "db:migrate": "tsx scripts/migrate.ts",
     "db:seed": "tsx scripts/seed.ts",
     "operator:provider-cost-report": "tsx scripts/provider-cost-report.ts",
     "media:generate:sponsor": "bash scripts/generate-sponsor-creative.sh",

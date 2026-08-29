@@ -21,7 +21,7 @@ The current release proves one narrow workload end to end: an eight-slide pitch 
   </tr>
 </table>
 
-These responsive light-mode states were captured during local browser QA. The public deployment is linked above; the complete hosted settlement-to-Gemini flow remains a separate verification boundary.
+These responsive light-mode states were captured during local browser QA. The public deployment is linked above and serves the same Git revision as this repository; the complete hosted settlement-to-Gemini flow remains a separate verification boundary.
 
 ## How it works
 
@@ -59,7 +59,7 @@ CE is not a token, is not transferable, and is not presented as money. Users do 
 | Monad settlement | Verified | Contract deployment, funded campaign `1`, source match, and one successful Testnet completion are publicly inspectable. |
 | Local golden path | Passed | Real Chromium, PostgreSQL, server-timed attention, Testnet settlement, CE accounting, and Gemini structured output completed as one causal run. |
 | Hosted golden path | Pending | The revised public Render deployment has not yet consumed another campaign completion and run the entire flow. |
-| Sponsor intake | Local release ready | The public form persists authorized, rate-limited campaign requests for operator review; the revised public deployment is still pending. |
+| Sponsor intake | Public | The deployed operator-reviewed form validates and stores bounded campaign requests. Its hosted UI and rejection boundary are verified; the first genuine sponsor submission remains pending. |
 | Real-money campaign | Not supported | Anonymous browser sessions are not a sufficient anti-Sybil boundary for open cash-backed rewards. |
 
 ## Contents

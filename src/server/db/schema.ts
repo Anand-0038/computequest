@@ -79,6 +79,20 @@ export const providerAttemptStatus = pgEnum("provider_attempt_status", [
   "FAILED",
 ]);
 
+export const sponsorInquiryStatus = pgEnum("sponsor_inquiry_status", [
+  "RECEIVED",
+  "CONTACTED",
+  "APPROVED",
+  "REJECTED",
+]);
+
+export const sponsorCreativeType = pgEnum("sponsor_creative_type", [
+  "VIDEO",
+  "X_POST",
+  "IMAGE",
+  "OTHER",
+]);
+
 const timestamps = {
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
@@ -327,5 +341,30 @@ export const providerAttempts = pgTable(
     uniqueIndex("provider_attempt_job_number_unique").on(table.jobId, table.attemptNumber),
     uniqueIndex("provider_attempt_request_unique").on(table.providerRequestId),
     index("provider_attempt_job_idx").on(table.jobId),
+  ],
+);
+
+export const sponsorInquiries = pgTable(
+  "sponsor_inquiries",
+  {
+    id: uuid("id").primaryKey(),
+    userId: uuid("user_id").notNull().references(() => users.id),
+    clientRequestId: uuid("client_request_id").notNull(),
+    companyName: text("company_name").notNull(),
+    contactName: text("contact_name").notNull(),
+    contactEmail: text("contact_email").notNull(),
+    companyWebsite: text("company_website").notNull(),
+    destinationUrl: text("destination_url").notNull(),
+    creativeType: sponsorCreativeType("creative_type").notNull(),
+    creativeUrl: text("creative_url").notNull(),
+    campaignTitle: text("campaign_title").notNull(),
+    description: text("description").notNull(),
+    status: sponsorInquiryStatus("status").notNull().default("RECEIVED"),
+    reviewNotes: text("review_notes"),
+    ...timestamps,
+  },
+  (table) => [
+    uniqueIndex("sponsor_inquiry_user_request_unique").on(table.userId, table.clientRequestId),
+    index("sponsor_inquiry_status_created_idx").on(table.status, table.createdAt),
   ],
 );

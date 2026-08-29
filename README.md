@@ -47,6 +47,8 @@ The three economic actors stay separate:
 - **User:** contributes attention and receives CE that can purchase AI service inside ComputeQuest.
 - **ComputeQuest:** verifies the session, relays settlement, accounts for CE, and runs the provider job.
 
+Companies can submit a campaign-review request from the public **For Sponsors** section. ComputeQuest stores the company, contact, official website, campaign destination, public creative link, title, and 280-character description in PostgreSQL and returns a reference ID. Submission never publishes or funds a campaign automatically; brand authorization, commercial terms, creative review, and a separate Monad campaign remain operator-controlled.
+
 CE is not a token, is not transferable, and is not presented as money. Users do not need a wallet in the current flow. The Monad creative is an independent educational campaign; Monad Testnet is the settlement network.
 
 ## Current status
@@ -57,6 +59,7 @@ CE is not a token, is not transferable, and is not presented as money. Users do 
 | Monad settlement | Verified | Contract deployment, funded campaign `1`, source match, and one successful Testnet completion are publicly inspectable. |
 | Local golden path | Passed | Real Chromium, PostgreSQL, server-timed attention, Testnet settlement, CE accounting, and Gemini structured output completed as one causal run. |
 | Hosted golden path | Pending | The revised public Render deployment has not yet consumed another campaign completion and run the entire flow. |
+| Sponsor intake | Local release ready | The public form persists authorized, rate-limited campaign requests for operator review; the revised public deployment is still pending. |
 | Real-money campaign | Not supported | Anonymous browser sessions are not a sufficient anti-Sybil boundary for open cash-backed rewards. |
 
 ## Contents
@@ -90,7 +93,7 @@ Completed presentations are rendered as slide previews and can be downloaded as 
 
 ## Verified evidence
 
-- Application: lint, TypeScript, 78 default Vitest tests, 19 real PostgreSQL integration tests, and production build pass.
+- Application: lint, TypeScript, 82 default Vitest tests, 20 real PostgreSQL integration tests, and production build pass.
 - Contract: 5 Foundry tests cover valid settlement, replay rejection, wrong verifier, expiry, pause, withdrawal, and a viem/Solidity EIP-712 golden vector.
 - Browser media: the controlled edge-state gate covers campaign selection, play, pause, buffering, ended, focus, and visibility boundaries. Separately, the production golden path earned 32,995 ms through the real heartbeat API in Chromium.
 - Gemini: the configured `gemini-3.5-flash-lite` provider completed the golden-path pitch deck and persisted a completed job.
@@ -154,12 +157,24 @@ Provider jobs allow at most three total attempts, including stale-lease recovery
 DATABASE_URL=postgresql://... corepack pnpm operator:provider-cost-report
 ```
 
+Review persisted sponsor requests without exposing them through a public read endpoint:
+
+```bash
+DATABASE_URL=postgresql://... corepack pnpm operator:sponsor-inquiries
+```
+
 ## Browser and media verification
 
 `scripts/test-sponsor-video-browser.py` drives the real UI and shipped MP4 in Chromium. It requires Python Playwright 1.55+, Google Chrome, and Xvfb on a headless Linux machine:
 
 ```bash
 xvfb-run -a python scripts/test-sponsor-video-browser.py
+```
+
+`scripts/test-sponsor-inquiry-browser.py` submits a non-commercial `example.com` request through the real local API and PostgreSQL, verifies keyboard navigation and the returned reference, and checks the 390 px layout:
+
+```bash
+python scripts/test-sponsor-inquiry-browser.py
 ```
 
 The script controls API responses to reach the quest without misrepresenting local infrastructure as live. Playback, pause, and end are real media-element events; visibility/focus changes are injected browser state and are labeled in the output.
@@ -180,6 +195,7 @@ After deployment, `corepack pnpm contracts:preflight:deployed` must observe the 
 
 - `GET /api/health` — configuration, live database query, observed Monad deployment/campaign preflight, and exact proof boundary.
 - `POST /api/session` — create or restore a signed HttpOnly anonymous session with an idempotent 4 CE initial grant and return its current ledger balance.
+- `POST /api/sponsor-inquiries` — validate and persist an operator-reviewed sponsor request. Only HTTPS creative links are accepted; duplicate client retries are idempotent and each signed browser session is limited to three submissions per 24 hours.
 - `POST /api/tasks` — create a fixed-cost pitch-deck task.
 - `GET /api/tasks/:taskId` — read persisted task state.
 - `POST /api/tasks/:taskId/run` — atomically claim a funded job and call Gemini.
@@ -203,6 +219,8 @@ The Sponsor Quest player is campaign-driven rather than tied to one brand. The r
 The Monad creative is an independent educational campaign; Monad Testnet is the settlement network. Each persisted user can receive at most one successful reward from a campaign. `campaign_reward_claims` separates that invariant from restartable quest attempts: the original verified quest can retry a failed settlement, while a different task cannot claim the same campaign reward.
 
 The current identity is a signed anonymous browser session. Clearing that identity is outside the protection offered by the one-user database constraint, so the public Testnet campaign must stay capped. A cash-backed campaign requires durable identity or a closed allowlist before sponsor funds are exposed.
+
+Sponsor inquiry links are stored but never fetched, embedded, or published automatically. The requester must confirm that they represent the company or have permission to share the creative. Contact data is available only through the database-backed operator command; there is no public inquiry-list endpoint.
 
 Every accepted heartbeat also writes an append-only `attention_events` record with its server timestamp, proof signals, credited milliseconds, eligibility reason, and SHA-256 event hash. This is auditable server-side evidence, not a claim that a browser can lock the rest of the operating system.
 

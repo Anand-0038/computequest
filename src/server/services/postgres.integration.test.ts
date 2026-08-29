@@ -18,6 +18,7 @@ import {
   users,
   jobs,
   providerAttempts,
+  sponsorInquiries,
 } from "@/server/db/schema";
 import * as gemini from "@/server/ai/gemini";
 import * as monad from "@/server/chain/monad";
@@ -25,6 +26,7 @@ import { listEligibleCampaigns, upsertDemoCampaign } from "@/server/services/cam
 import { retryRefundedJob, runPresentationJob } from "@/server/services/jobs";
 import { createQuestSession, recordHeartbeat } from "@/server/services/quests";
 import { authorizeQuestCompletion, settleQuestCompletion } from "@/server/services/settlements";
+import { createSponsorInquiry } from "@/server/services/sponsor-inquiries";
 import { createPresentationTask, getCreditBalance } from "@/server/services/tasks";
 
 const integrationDatabaseUrl = process.env.INTEGRATION_DATABASE_URL;
@@ -98,6 +100,47 @@ describe.skipIf(!integrationDatabaseUrl)("PostgreSQL service integration", () =>
     expect(created.balance).toBe(INITIAL_DEMO_BALANCE);
     expect(created.shortage).toBe(TASK_COST - INITIAL_DEMO_BALANCE);
     expect(await getCreditBalance(userId)).toBe(INITIAL_DEMO_BALANCE);
+  });
+
+  it("stores sponsor inquiries idempotently and enforces the daily per-session limit under concurrency", async () => {
+    const db = getDatabase();
+    const userId = crypto.randomUUID();
+    await db.insert(users).values({ id: userId });
+    const base = {
+      userId,
+      companyName: "A2Z DTC",
+      contactName: "Product Founder",
+      contactEmail: "FOUNDER@example.com",
+      companyWebsite: "https://www.a2zdtc.com",
+      destinationUrl: "https://www.a2zdtc.com/products",
+      creativeType: "VIDEO" as const,
+      creativeUrl: "https://www.a2zdtc.com/creative.mp4",
+      campaignTitle: "Commerce built for modern brands",
+      description: "Introduce founders to a practical commerce product and invite them to learn more.",
+      authorizationConfirmed: true as const,
+      now: new Date("2026-08-29T10:00:00.000Z"),
+    };
+    const firstRequestId = crypto.randomUUID();
+    const first = await createSponsorInquiry({ ...base, clientRequestId: firstRequestId });
+    const retried = await createSponsorInquiry({ ...base, clientRequestId: firstRequestId });
+
+    expect(first.created).toBe(true);
+    expect(retried.created).toBe(false);
+    expect(retried.inquiry.id).toBe(first.inquiry.id);
+    expect(first.inquiry.contactEmail).toBe("founder@example.com");
+
+    const attempts = await Promise.allSettled([
+      createSponsorInquiry({ ...base, clientRequestId: crypto.randomUUID(), campaignTitle: "Second campaign" }),
+      createSponsorInquiry({ ...base, clientRequestId: crypto.randomUUID(), campaignTitle: "Third campaign" }),
+      createSponsorInquiry({ ...base, clientRequestId: crypto.randomUUID(), campaignTitle: "Fourth campaign" }),
+    ]);
+
+    expect(attempts.filter((attempt) => attempt.status === "fulfilled")).toHaveLength(2);
+    expect(attempts.filter((attempt) => attempt.status === "rejected")).toHaveLength(1);
+    expect(attempts.find((attempt) => attempt.status === "rejected")).toMatchObject({
+      reason: expect.objectContaining({ message: "SPONSOR_INQUIRY_RATE_LIMITED" }),
+    });
+    expect(await db.select().from(sponsorInquiries)).toHaveLength(3);
   });
 
   it("lists multiple funded campaigns and excludes a campaign already claimed by the user", async () => {

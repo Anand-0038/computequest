@@ -6,6 +6,7 @@ import { TASK_COST } from "@/domain/constants";
 import type { Presentation } from "@/domain/presentation";
 import { ComputeCell, type ComputeCellViewModel } from "@/components/compute-cell";
 import { SponsorQuest } from "@/components/sponsor-quest";
+import { SponsorInquiry } from "@/components/sponsor-inquiry";
 
 type RuntimeStatus = {
   status?: "ready" | "configuration_required" | "preflight_failed";
@@ -238,6 +239,7 @@ export function ComputeQuestApp() {
           <span>ComputeQuest</span>
         </a>
         <div className="cq-nav-actions">
+          <a className="sponsor-nav-link" href="#for-sponsors">FOR SPONSORS</a>
           <div className="cq-network" title="All settlement is restricted to Monad Testnet">
             <span className={health?.status === "ready" ? "status-dot ready" : "status-dot"} />
             MONAD TESTNET
@@ -432,6 +434,8 @@ export function ComputeQuestApp() {
           </div>
         </section>
       ) : null}
+
+      <SponsorInquiry sessionReady={sessionReady} />
 
       <section className="truth-strip" aria-label="System guarantees">
         <div><span>01</span><strong>SERVER-TIMED QUEST</strong><p>Focus and playback heartbeats are checked server-side.</p></div>

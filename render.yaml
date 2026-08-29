@@ -13,7 +13,7 @@ services:
     plan: free
     region: singapore
     autoDeployTrigger: off
-    buildCommand: corepack pnpm install --frozen-lockfile && corepack pnpm db:migrate && corepack pnpm db:seed && corepack pnpm build
+    buildCommand: corepack pnpm install --frozen-lockfile && corepack pnpm operator:activate-payzoll && corepack pnpm db:migrate && corepack pnpm db:seed && corepack pnpm build
     startCommand: node node_modules/next/dist/bin/next start
     healthCheckPath: /api/health
     envVars:
@@ -57,3 +57,13 @@ services:
         value: "20"
       - key: DEMO_QUEST_ANSWER
         value: parallel execution
+      - key: PAYZOLL_CAMPAIGN_ID
+        value: 02786121-3993-4717-9bba-90d5ced7a118
+      - key: PAYZOLL_ONCHAIN_CAMPAIGN_ID
+        value: "2"
+      - key: PAYZOLL_ONCHAIN_REWARD_WEI
+        value: "1000000000000000"
+      - key: PAYZOLL_QUEST_SECONDS
+        value: "15"
+      - key: PAYZOLL_MAX_COMPLETIONS
+        value: "20"

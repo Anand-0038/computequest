@@ -34,6 +34,7 @@ __pycache__/
 /.agents/
 /skills-lock.json
 /public/media/.generated/
+/.build-revision
 
 # debug
 npm-debug.log*

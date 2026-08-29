@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 import { sql } from "drizzle-orm";
+import { readFile } from "node:fs/promises";
+import { resolve } from "node:path";
 
 import { getCachedMonadPreflight } from "@/server/chain/monad";
 import { getDatabase } from "@/server/db/client";
@@ -7,9 +9,20 @@ import { inspectRuntimeEnv, requireRuntimeEnv } from "@/server/env";
 
 export const dynamic = "force-dynamic";
 
+async function getBuildRevision() {
+  const runtimeRevision = process.env.RENDER_GIT_COMMIT?.trim() || process.env.GIT_COMMIT_SHA?.trim();
+  if (runtimeRevision) return runtimeRevision;
+  try {
+    const generatedRevision = await readFile(resolve(process.cwd(), ".build-revision"), "utf8");
+    return generatedRevision.trim() || null;
+  } catch {
+    return null;
+  }
+}
+
 export async function GET() {
   const runtime = inspectRuntimeEnv();
-  const buildRevision = process.env.RENDER_GIT_COMMIT ?? process.env.GIT_COMMIT_SHA ?? null;
+  const buildRevision = await getBuildRevision();
 
   if (!runtime.configured) {
     return NextResponse.json(

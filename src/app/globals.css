@@ -15,12 +15,12 @@
 :root[data-theme="light"] { color-scheme: light; }
 
 * { box-sizing: border-box; }
-html { scroll-behavior: smooth; }
-body { margin: 0; background: var(--ink); color: var(--paper); font-family: Arial, sans-serif; }
+html { scroll-behavior: smooth; overflow-x: clip; }
+body { margin: 0; overflow-x: clip; background: var(--ink); color: var(--paper); font-family: Arial, sans-serif; }
 button, textarea { font: inherit; }
 button { cursor: pointer; }
 
-.cq-shell { min-height: 100vh; overflow: hidden; }
+.cq-shell { min-height: 100vh; overflow-x: clip; }
 .cq-nav { height: 72px; padding: 0 clamp(20px, 5vw, 72px); display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--line); }
 .cq-brand { display: flex; align-items: center; gap: 12px; color: var(--paper); text-decoration: none; font-size: 15px; font-weight: 800; letter-spacing: -.02em; }
 .cq-brand-mark { width: 34px; height: 34px; display: grid; place-items: center; background: var(--purple); color: white; font: 800 11px monospace; transform: rotate(-4deg); }

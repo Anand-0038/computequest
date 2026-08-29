@@ -246,6 +246,64 @@ describe.skipIf(!integrationDatabaseUrl)("PostgreSQL service integration", () =>
     expect(await getCreditBalance(userId)).toBe(0);
   });
 
+  it("allows a recovered funded job to start exactly one provider request", async () => {
+    const db = getDatabase();
+    const userId = crypto.randomUUID();
+    await db.insert(users).values({ id: userId });
+    await db.insert(creditEntries).values({
+      id: crypto.randomUUID(),
+      userId,
+      amount: TASK_COST,
+      type: "INITIAL_GRANT",
+      referenceId: userId,
+      idempotencyKey: `initial-grant:${userId}`,
+    });
+    const created = await createPresentationTask({
+      userId,
+      prompt: "Recover this funded provider job after a lost settlement response.",
+    });
+    const providerResult: Awaited<ReturnType<typeof gemini.generatePresentation>> = {
+      presentation: {
+        title: "Recovered job",
+        subtitle: "One persisted job creates one provider request",
+        theme: "technical",
+        slides: Array.from({ length: 6 }, (_, index) => ({
+          title: `Slide ${index + 1}`,
+          bullets: ["Recovery remains idempotent"],
+          speakerNote: "Explain the lease boundary.",
+          visualDirection: "Show one recovered job.",
+        })),
+      },
+      providerRequestId: "provider-request-recovered",
+      requestedModel: "gemini-3.5-flash-lite",
+      responseModelVersion: "gemini-3.5-flash-lite-001",
+      usage: {
+        promptTokenCount: 100,
+        cachedContentTokenCount: null,
+        candidatesTokenCount: 100,
+        toolUsePromptTokenCount: null,
+        thoughtsTokenCount: null,
+        totalTokenCount: 200,
+        serviceTier: "STANDARD",
+      },
+    };
+    let releaseProvider!: (value: typeof providerResult) => void;
+    const provider = vi.spyOn(gemini, "generatePresentation").mockImplementation(
+      () => new Promise((resolve) => {
+        releaseProvider = resolve;
+      }),
+    );
+
+    const firstRun = runPresentationJob({ taskId: created.task.id, userId });
+    await vi.waitFor(() => expect(provider).toHaveBeenCalledTimes(1));
+    const duplicateRun = await runPresentationJob({ taskId: created.task.id, userId });
+
+    expect(duplicateRun).toMatchObject({ execute: false, job: { status: "PROCESSING" } });
+    releaseProvider(providerResult);
+    await expect(firstRun).resolves.toMatchObject({ job: { status: "COMPLETED" } });
+    expect(provider).toHaveBeenCalledTimes(1);
+  });
+
   it("does not reclaim a stale provider lease after the attempt cap", async () => {
     const db = getDatabase();
     const userId = crypto.randomUUID();

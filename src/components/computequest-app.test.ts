@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { deriveActiveStage, deriveComputeCell } from "@/components/computequest-app";
+import { deriveActiveStage, deriveComputeCell, shouldRecoverFundedJob } from "@/components/computequest-app";
 
 describe("ComputeQuest persisted stage rail", () => {
   it.each([
@@ -82,5 +82,19 @@ describe("ComputeQuest compute cell", () => {
       label: "CREDITS REFUNDED",
       detail: expect.stringContaining("start a new task"),
     });
+  });
+});
+
+describe("ComputeQuest funded-job recovery", () => {
+  it("restarts only a persisted funded job", () => {
+    expect(shouldRecoverFundedJob({
+      task: { id: "task", status: "FUNDED" },
+      job: { id: "job", status: "FUNDED" },
+    })).toBe(true);
+    expect(shouldRecoverFundedJob({
+      task: { id: "task", status: "PROCESSING" },
+      job: { id: "job", status: "PROCESSING" },
+    })).toBe(false);
+    expect(shouldRecoverFundedJob(null)).toBe(false);
   });
 });

@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useCallback, useEffect, useState, useSyncExternalStore } from "react";
+import { FormEvent, useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 
 import { TASK_COST } from "@/domain/constants";
 import type { Presentation } from "@/domain/presentation";
@@ -71,7 +71,9 @@ export function ComputeQuestApp() {
   const [creatingSession, setCreatingSession] = useState(false);
   const [sessionBalance, setSessionBalance] = useState<number | null>(null);
   const [sessionError, setSessionError] = useState<string | null>(null);
+  const [jobRecoveryError, setJobRecoveryError] = useState<string | null>(null);
   const [result, setResult] = useState<{ presentation: Presentation; transactionHash: string } | null>(null);
+  const attemptedJobRecoveries = useRef(new Set<string>());
 
   function toggleTheme() {
     const nextTheme: Theme = theme === "dark" ? "light" : "dark";
@@ -147,6 +149,23 @@ export function ComputeQuestApp() {
     applyTaskSnapshot((await response.json()) as TaskSnapshot);
   }, [applyTaskSnapshot]);
 
+  const recoverFundedJob = useCallback(async (taskId: string, force = false) => {
+    if (!force && attemptedJobRecoveries.current.has(taskId)) return;
+    attemptedJobRecoveries.current.add(taskId);
+    setJobRecoveryError(null);
+    try {
+      const response = await fetch(`/api/tasks/${encodeURIComponent(taskId)}/run`, { method: "POST" });
+      const body = (await response.json()) as { error?: string };
+      if (!response.ok && body.error !== "JOB_ALREADY_CLAIMED") {
+        throw new Error(body.error ?? `JOB_RECOVERY_FAILED:${response.status}`);
+      }
+    } catch (error) {
+      setJobRecoveryError(error instanceof Error ? error.message : "JOB_RECOVERY_FAILED");
+    } finally {
+      await refreshTask(taskId).catch(() => undefined);
+    }
+  }, [refreshTask]);
+
   useEffect(() => {
     if (!sessionReady || !activeTaskId) return;
     const initialRefresh = window.setTimeout(() => {
@@ -160,6 +179,13 @@ export function ComputeQuestApp() {
       window.clearInterval(timer);
     };
   }, [activeTaskId, refreshTask, sessionReady]);
+
+  useEffect(() => {
+    const taskId = task?.task?.id;
+    if (!taskId || !shouldRecoverFundedJob(task)) return;
+    const timer = window.setTimeout(() => void recoverFundedJob(taskId), 0);
+    return () => window.clearTimeout(timer);
+  }, [recoverFundedJob, task]);
 
   async function submitTask(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -352,6 +378,26 @@ export function ComputeQuestApp() {
           </div>
         ) : null}
 
+        {jobRecoveryError && task?.task && task.job?.status === "FUNDED" ? (
+          <div className="system-message error" role="alert">
+            <span>AI START RECOVERY</span>
+            <div>
+              <p>The funded job did not start automatically: {jobRecoveryError}</p>
+              <button
+                onClick={() => {
+                  const taskId = task.task?.id;
+                  if (!taskId) return;
+                  attemptedJobRecoveries.current.delete(taskId);
+                  void recoverFundedJob(taskId, true);
+                }}
+                type="button"
+              >
+                RETRY FUNDED JOB
+              </button>
+            </div>
+          </div>
+        ) : null}
+
         {!result && task?.task && (Boolean(task.shortage) || task.job?.status === "REFUNDED") ? (
           <SponsorQuest
             balance={task.balance ?? 0}
@@ -414,6 +460,10 @@ export function deriveActiveStage(input: { result: boolean; task: TaskResponse |
   if (["CREATED", "ACTIVE", "PAUSED", "VERIFYING"].includes(input.task?.quest?.state ?? "")) return 2;
   if (input.task?.task?.status === "AWAITING_CREDITS") return 1;
   return 0;
+}
+
+export function shouldRecoverFundedJob(task: TaskResponse | null) {
+  return Boolean(task?.task?.id && task.job?.status === "FUNDED");
 }
 
 export function deriveComputeCell(input: {

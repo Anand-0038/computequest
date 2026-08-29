@@ -76,6 +76,8 @@ CE is not a token, is not transferable, and is not presented as money. Users do 
 
 ## Architecture
 
+![ComputeQuest architecture: an AI task either uses available Compute Energy or completes a verified Sponsor Quest, settles the signed reward through CampaignEscrow on Monad, credits CE, and starts Gemini.](docs/images/computequest-architecture.jpg)
+
 ```text
 Next.js UI and route handlers
   ├── PostgreSQL / Drizzle: tasks, quest sessions, reward claims, append-only evidence and credit ledger
@@ -93,7 +95,7 @@ Completed presentations are rendered as slide previews, copied as a readable tex
 
 ## Verified evidence
 
-- Application: lint, TypeScript, 82 default Vitest tests, 20 real PostgreSQL integration tests, and production build pass.
+- Application: lint, TypeScript, 89 default Vitest tests, 20 real PostgreSQL integration tests, and production build pass.
 - Contract: 5 Foundry tests cover valid settlement, replay rejection, wrong verifier, expiry, pause, withdrawal, and a viem/Solidity EIP-712 golden vector.
 - Browser media: the controlled edge-state gate covers campaign selection, play, pause, buffering, ended, focus, and visibility boundaries. Separately, the production golden path earned 32,995 ms through the real heartbeat API in Chromium.
 - Gemini: the configured `gemini-3.5-flash-lite` provider completed the golden-path pitch deck and persisted a completed job.

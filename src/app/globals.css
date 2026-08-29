@@ -46,7 +46,9 @@ h1 span { color: var(--purple); display: block; }
 .energy-orbit::before, .energy-orbit::after { content: ""; position: absolute; border: 1px solid rgba(23,21,27,.28); border-radius: 50%; }
 .energy-orbit::before { width: 174px; height: 174px; }
 .energy-orbit::after { width: 218px; height: 92px; transform: rotate(-18deg); }
-.energy-core { width: 92px; height: 92px; display: grid; place-items: center; border-radius: 50%; background: var(--ink); color: var(--energy); font: 800 25px monospace; z-index: 1; }
+.energy-core { width: 92px; height: 92px; display: grid; place-content: center; gap: 1px; border-radius: 50%; background: var(--ink); color: var(--energy); text-align: center; z-index: 1; }
+.energy-core strong { font: 800 28px/1 monospace; }
+.energy-core small { color: var(--paper); font: 800 9px/1 monospace; letter-spacing: .12em; }
 .energy-panel > p { max-width: 280px; font-size: 13px; line-height: 1.45; margin: 0; }
 
 .cq-workbench { background: var(--paper); color: var(--ink); padding: clamp(54px, 7vw, 96px) clamp(20px, 5vw, 72px); }

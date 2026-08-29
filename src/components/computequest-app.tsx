@@ -48,6 +48,13 @@ function getThemeSnapshot(): Theme {
   return document.documentElement.dataset.theme === "light" ? "light" : "dark";
 }
 
+async function requestSession() {
+  const response = await fetch("/api/session", { method: "POST" });
+  const body = (await response.json()) as { ready?: boolean; balance?: number; error?: string };
+  if (!response.ok || !body.ready) throw new Error(body.error ?? "SESSION_CREATE_FAILED");
+  return { balance: body.balance ?? 0 };
+}
+
 export function ComputeQuestApp() {
   const theme = useSyncExternalStore(subscribeToTheme, getThemeSnapshot, () => "dark");
   const [prompt, setPrompt] = useState("");
@@ -59,6 +66,8 @@ export function ComputeQuestApp() {
   );
   const [submitting, setSubmitting] = useState(false);
   const [sessionReady, setSessionReady] = useState(false);
+  const [creatingSession, setCreatingSession] = useState(false);
+  const [sessionBalance, setSessionBalance] = useState<number | null>(null);
   const [sessionError, setSessionError] = useState<string | null>(null);
   const [result, setResult] = useState<{ presentation: Presentation; transactionHash: string } | null>(null);
 
@@ -86,16 +95,29 @@ export function ComputeQuestApp() {
       .finally(() => setCheckingHealth(false));
   }, []);
 
+  const retrySession = useCallback(async () => {
+    setCreatingSession(true);
+    setSessionError(null);
+    try {
+      const session = await requestSession();
+      setSessionBalance(session.balance);
+      setSessionReady(true);
+    } catch (error) {
+      setSessionError(error instanceof Error ? error.message : "SESSION_CREATE_FAILED");
+    } finally {
+      setCreatingSession(false);
+    }
+  }, []);
+
   useEffect(() => {
-    if (health?.status !== "ready" || sessionReady) return;
-    fetch("/api/session", { method: "POST" })
-      .then(async (response) => {
-        const body = (await response.json()) as { ready?: boolean; error?: string };
-        if (!response.ok || !body.ready) throw new Error(body.error ?? "SESSION_CREATE_FAILED");
+    if (health?.status !== "ready" || sessionReady || sessionError) return;
+    requestSession()
+      .then((session) => {
+        setSessionBalance(session.balance);
         setSessionReady(true);
       })
       .catch((error) => setSessionError(error instanceof Error ? error.message : "SESSION_CREATE_FAILED"));
-  }, [health?.status, sessionReady]);
+  }, [health?.status, sessionError, sessionReady]);
 
   const applyTaskSnapshot = useCallback((snapshot: TaskSnapshot) => {
     setTask({
@@ -173,6 +195,7 @@ export function ComputeQuestApp() {
   }
 
   const activeStage = deriveActiveStage({ result: Boolean(result), task });
+  const computeCell = deriveComputeCell({ activeStage, sessionBalance, sessionReady, task });
 
   async function handleQuestComplete(presentation: Presentation, transactionHash: string) {
     setResult({ presentation, transactionHash });
@@ -222,12 +245,15 @@ export function ComputeQuestApp() {
         <aside className="energy-panel" aria-label="Compute energy economics">
           <div className="energy-topline">
             <span>COMPUTE CELL</span>
-            <span>24 CE / DECK</span>
+            <span>{computeCell.label}</span>
           </div>
           <div className="energy-orbit">
-            <span className="energy-core">CE</span>
+            <span className="energy-core">
+              <strong>{computeCell.balance ?? "—"}</strong>
+              <small>CE</small>
+            </span>
           </div>
-          <p>Credits move only after an onchain settlement is confirmed.</p>
+          <p>{computeCell.detail}</p>
         </aside>
       </section>
 
@@ -307,7 +333,12 @@ export function ComputeQuestApp() {
         {sessionError ? (
           <div className="system-message error" role="alert">
             <span>SESSION UNAVAILABLE</span>
-            <p>{sessionError}</p>
+            <div>
+              <p>{sessionError}</p>
+              <button disabled={creatingSession} onClick={() => void retrySession()} type="button">
+                {creatingSession ? "RETRYING SESSION…" : "RETRY SESSION"}
+              </button>
+            </div>
           </div>
         ) : null}
 
@@ -389,4 +420,53 @@ export function deriveActiveStage(input: { result: boolean; task: TaskResponse |
   if (["CREATED", "ACTIVE", "PAUSED", "VERIFYING"].includes(input.task?.quest?.state ?? "")) return 2;
   if (input.task?.task?.status === "AWAITING_CREDITS") return 1;
   return 0;
+}
+
+export function deriveComputeCell(input: {
+  activeStage: number;
+  sessionBalance: number | null;
+  sessionReady: boolean;
+  task: TaskResponse | null;
+}) {
+  const balance = input.task?.balance ?? input.sessionBalance;
+  if (!input.sessionReady) {
+    return {
+      balance: null,
+      label: "24 CE / DECK",
+      detail: "Runtime and ledger readiness are checked before accepting work.",
+    };
+  }
+  if (input.task?.job?.status === "REFUNDED") {
+    return {
+      balance,
+      label: "CREDITS REFUNDED",
+      detail: "The failed provider spend was returned to the ledger and the persisted job can be retried.",
+    };
+  }
+  if (input.activeStage >= 5) {
+    return {
+      balance,
+      label: "JOB COMPLETE",
+      detail: "The funded compute job completed and its structured result is persisted.",
+    };
+  }
+  if (input.activeStage === 4 || input.task?.job?.status === "FUNDED") {
+    return {
+      balance,
+      label: "AI WORKING",
+      detail: "The 24 CE task spend is committed while Gemini builds the presentation.",
+    };
+  }
+  if (input.task?.task?.status === "AWAITING_CREDITS") {
+    return {
+      balance,
+      label: `${input.task.shortage ?? 0} CE GAP`,
+      detail: "Complete the verified Sponsor Quest to close the gap before generation.",
+    };
+  }
+  return {
+    balance,
+    label: "24 CE / DECK",
+    detail: "New sessions start with 4 CE. Confirmed quest rewards close the funding gap.",
+  };
 }

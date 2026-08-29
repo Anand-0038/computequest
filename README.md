@@ -23,7 +23,7 @@ Completed presentations are rendered as slide previews and can be downloaded as 
 
 ## Current evidence
 
-- Application: lint, TypeScript, 54 default Vitest tests, 10 real PostgreSQL integration tests, and production build pass.
+- Application: lint, TypeScript, 60 default Vitest tests, 10 real PostgreSQL integration tests, and production build pass.
 - Contract: 5 Foundry tests cover valid settlement, replay rejection, wrong verifier, expiry, pause, withdrawal, and a viem/Solidity EIP-712 golden vector.
 - Browser media: the controlled edge-state gate covers play, pause, buffering, ended, focus, and visibility boundaries. Separately, the unmocked production golden path earned 32,995 ms through the real heartbeat API in Chromium.
 - Gemini: the configured `gemini-3.5-flash-lite` provider completed the golden-path pitch deck and persisted a completed job.
@@ -82,7 +82,7 @@ After deployment, `corepack pnpm contracts:preflight:deployed` must observe the 
 ## Main routes
 
 - `GET /api/health` — configuration, live database query, observed Monad deployment/campaign preflight, and exact proof boundary.
-- `POST /api/session` — create or restore a signed HttpOnly anonymous session with an idempotent 4 CE initial grant.
+- `POST /api/session` — create or restore a signed HttpOnly anonymous session with an idempotent 4 CE initial grant and return its current ledger balance.
 - `POST /api/tasks` — create a fixed-cost pitch-deck task.
 - `GET /api/tasks/:taskId` — read persisted task state.
 - `POST /api/tasks/:taskId/run` — atomically claim a funded job and call Gemini.
@@ -109,6 +109,8 @@ Signed completion receipts have a separate 10-minute onchain lifetime. If an uns
 Every relay claim creates an append-only settlement-attempt record. Reverted and submission-failed attempts retain their transaction hash or failure reason, while the settlement aggregate can safely move to a later attempt. `GET /api/tasks/:taskId` returns the sanitized ordered attempt history with JSON-safe block numbers for reload recovery and demo evidence.
 
 The six-stage interface is derived from persisted task, quest, settlement, and job states: Brief → Fund → Attention → Monad settlement → AI working → Result. Completion stops tracking, exits fullscreen, refreshes the persisted task snapshot, removes the finished quest, and reveals the generated result without requiring a manual Escape key or page reload.
+
+The Compute Cell reads the same persisted ledger state instead of animating a decorative balance: it shows the 4 CE starter grant, the 20 CE task gap, the post-spend AI-working state, completion, or a provider refund. If the initial anonymous-session handshake fails transiently, the interface remains disabled and exposes an explicit retry instead of silently creating work without an authenticated ledger owner.
 
 `GET /api/health` returns `ready` only after a live PostgreSQL query and a read-only Monad preflight observe the expected chain ID, deployed escrow bytecode, verifier, active campaign, configured reward, remaining capacity and budget, relayer payout recipient, and a relayer balance above `RELAYER_MIN_BALANCE_WEI`. The preflight never sends a valid signed receipt to an RPC. Quest creation, authorization, and settlement enforce the same cached preflight before mutating state. Gemini remains `configured_unverified` until a real generation succeeds.
 

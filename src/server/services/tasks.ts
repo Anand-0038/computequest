@@ -52,7 +52,8 @@ export async function createPresentationTask(input: { userId: string; prompt: st
       });
     }
 
-    return { task, balance, shortage: Math.max(0, TASK_COST - balance) };
+    const currentBalance = status === "FUNDED" ? balance - TASK_COST : balance;
+    return { task, balance: currentBalance, shortage: Math.max(0, TASK_COST - balance) };
   });
 }
 

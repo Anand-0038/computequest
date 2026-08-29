@@ -103,6 +103,7 @@ describe.skipIf(!integrationDatabaseUrl)("PostgreSQL service integration", () =>
     ]);
 
     expect(created.map((entry) => entry.task.status).sort()).toEqual(["AWAITING_CREDITS", "FUNDED"]);
+    expect(created.map((entry) => entry.balance)).toEqual([0, 0]);
     expect(await getCreditBalance(userId)).toBe(0);
   });
 

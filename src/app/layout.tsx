@@ -1,5 +1,9 @@
 import type { Metadata } from "next";
+import Script from "next/script";
 import type { ReactNode } from "react";
+
+import { getGoogleAnalyticsMeasurementId } from "@/lib/analytics";
+
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -49,6 +53,8 @@ const themeScript = `
 `;
 
 export default function RootLayout({ children }: { children: ReactNode }) {
+  const googleAnalyticsMeasurementId = getGoogleAnalyticsMeasurementId();
+
   return (
     <html lang="en" suppressHydrationWarning>
       <head>
@@ -58,7 +64,25 @@ export default function RootLayout({ children }: { children: ReactNode }) {
           type="application/ld+json"
         />
       </head>
-      <body>{children}</body>
+      <body>
+        {children}
+        {googleAnalyticsMeasurementId ? (
+          <>
+            <Script
+              src={`https://www.googletagmanager.com/gtag/js?id=${googleAnalyticsMeasurementId}`}
+              strategy="afterInteractive"
+            />
+            <Script id="google-analytics" strategy="afterInteractive">
+              {`
+                window.dataLayer = window.dataLayer || [];
+                function gtag(){dataLayer.push(arguments);}
+                gtag('js', new Date());
+                gtag('config', '${googleAnalyticsMeasurementId}');
+              `}
+            </Script>
+          </>
+        ) : null}
+      </body>
     </html>
   );
 }

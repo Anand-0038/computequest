@@ -29,6 +29,8 @@ services:
         sync: false
       - key: GEMINI_MODEL
         value: gemini-3.5-flash-lite
+      - key: NEXT_PUBLIC_GA_MEASUREMENT_ID
+        value: G-LG8WYB5Z44
       - key: MONAD_RPC_URL
         sync: false
       - key: MONAD_CHAIN_ID
